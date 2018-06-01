@@ -180,13 +180,12 @@ namespace Hyperledger.Fabric.Shim.Fsm
             if (type == CallbackType.LEAVE_STATE) trigger = evnt.Src;
             else if (type == CallbackType.ENTER_STATE) trigger = evnt.Dst;
 
-            Action<FSMEvent>[] callbacks = new Action<FSMEvent>[]
-            {
-                this.callbacks.GetOrNull(new CallbackKey(trigger, type)), //Primary
-                this.callbacks.GetOrNull(new CallbackKey("", type)), //General
+            Action<FSMEvent>[] cbks = {
+                callbacks.GetOrNull(new CallbackKey(trigger, type)), //Primary
+                callbacks.GetOrNull(new CallbackKey("", type)) //General
             };
 
-            foreach (Action<FSMEvent> callback in callbacks)
+            foreach (Action<FSMEvent> callback in cbks)
             {
                 if (callback != null)
                 {
@@ -198,7 +197,8 @@ namespace Hyperledger.Fabric.Shim.Fsm
                             Transition = null;
                             throw new CancelledException(evnt.Error);
                         }
-                        else if (evnt.Async)
+
+                        if (evnt.Async)
                         {
                             throw new AsyncException(evnt.Error);
                         }

@@ -17,7 +17,7 @@ limitations under the License.
 using Google.Protobuf;
 using Hyperledger.Fabric.Protos.Ledger.QueryResult;
 using Hyperledger.Fabric.Shim.Helper;
-using Hyperledger.Fabric.Shim.Impl;
+using Hyperledger.Fabric.Shim.Implementation;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace Hyperledger.Fabric.Shim.Tests.Implementation

@@ -81,7 +81,7 @@ namespace Hyperledger.Fabric.Shim.Tests.Ledger
             CompositeKey key = new CompositeKey("abc", new string[] {"def", "ghi", "jkl", "mno"});
             Assert.AreEqual(key.ObjectType, "abc");
             Assert.AreEqual(key.Attributes.Count, 4);
-            CollectionAssert.AreEquivalent(key.Attributes, new string[] {"def", "ghi", "jkl", "mno"});
+            CollectionAssert.AreEquivalent(key.Attributes, new [] {"def", "ghi", "jkl", "mno"});
         }
 
         [TestMethod]
@@ -97,7 +97,7 @@ namespace Hyperledger.Fabric.Shim.Tests.Ledger
             CompositeKey key = CompositeKey.ParseCompositeKey("abc\u0000def\u0000ghi\u0000jkl\u0000mno\u0000");
             Assert.AreEqual(key.ObjectType, "abc");
             Assert.AreEqual(key.Attributes.Count, 4);
-            CollectionAssert.AreEquivalent(key.Attributes, new string[] {"def", "ghi", "jkl", "mno"});
+            CollectionAssert.AreEquivalent(key.Attributes, new [] {"def", "ghi", "jkl", "mno"});
             Assert.AreEqual(key.ToString(), "abc\u0000def\u0000ghi\u0000jkl\u0000mno\u0000");
         }
 

@@ -62,21 +62,21 @@ namespace Hyperledger.Fabric.Shim.Ledger
         public static CompositeKey ParseCompositeKey(string compositeKey)
         {
             if (compositeKey == null) return null;
-            string[] segments = compositeKey.Split(new string[] {DELIMITER}, StringSplitOptions.RemoveEmptyEntries);
+            string[] segments = compositeKey.Split(new [] {DELIMITER}, StringSplitOptions.RemoveEmptyEntries);
             return new CompositeKey(segments[0], segments.Skip(1));
         }
 
-        private string GenerateCompositeKeyString(string objectType, List<string> attributes)
+        private string GenerateCompositeKeyString(string objectType, List<string> attrs)
         {
             // object type must be a valid composite key segment
             ValidateCompositeKeySegment(objectType);
 
             // the attributes must be valid composite key segments
-            attributes.ForEach(a => ValidateCompositeKeySegment(a));
+            attrs.ForEach(a => ValidateCompositeKeySegment(a));
             StringBuilder builder = new StringBuilder();
             builder.Append(objectType);
             builder.Append(DELIMITER);
-            attributes.ForEach(a => builder.Append(a).Append(DELIMITER));
+            attrs.ForEach(a => builder.Append(a).Append(DELIMITER));
             return builder.ToString();
         }
 

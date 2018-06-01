@@ -16,7 +16,7 @@ limitations under the License.
 
 using Hyperledger.Fabric.Protos.Peer;
 
-namespace Hyperledger.Fabric.Shim.Impl
+namespace Hyperledger.Fabric.Shim.Implementation
 {
     public class NextStateInfo
     {

@@ -30,18 +30,14 @@ import org.hyperledger.fabric.shim.ledger.KeyValue;
 import org.hyperledger.fabric.shim.ledger.QueryResultsIterator;
 */
 
-using System;
 using System.Collections.Generic;
-using Hyperledger.Fabric.Protos.Ledger.QueryResult;
 using Hyperledger.Fabric.Protos.Peer;
-using Hyperledger.Fabric.Protos.Peer.ProposalResponsePackage;
 using Hyperledger.Fabric.Shim.Ledger;
 
 namespace Hyperledger.Fabric.Shim
 {
     public interface IChaincodeStub
     {
-
         /**
          * Returns the arguments corresponding to the call to
          * {@link Chaincode#init(ChaincodeStub)} or
@@ -95,6 +91,17 @@ namespace Hyperledger.Fabric.Shim
          * @return the channel id
          */
         string ChannelId { get; }
+        //{
+        //putState(key, value.getBytes(UTF_8));
+        //}
+
+        /**
+         * Returns the CHAINCODE type event that will be posted to interested
+         * clients when the chaincode's result is committed to the ledger.
+         *
+         * @return the chaincode event or null
+         */
+        ChaincodeEvent Event { get; }
 
         /**
          * Invoke another chaincode using the same transaction context.
@@ -107,7 +114,7 @@ namespace Hyperledger.Fabric.Shim
          *            If not specified, the caller's channel is assumed.
          * @return
          */
-        Response InvokeChaincode(string chaincodeName, List<byte[]> args, string channel);
+        Response InvokeChaincode(string chaincodeName, List<byte[]> arguments, string channel);
 
         /**
          * Returns the byte array value specified by the key, from the ledger.
@@ -223,7 +230,7 @@ namespace Hyperledger.Fabric.Shim
          *            Arguments to pass on to the called chaincode.
          * @return
          */
-        Response InvokeChaincode(string chaincodeName, List<byte[]> args);
+        Response InvokeChaincode(string chaincodeName, List<byte[]> arguments);
 //        {
 //		return invokeChaincode(chaincodeName, args, null);
 //	}
@@ -243,7 +250,7 @@ namespace Hyperledger.Fabric.Shim
          *            If not specified, the caller's channel is assumed.
          * @return
          */
-        Response InvokeChaincodeWithStringArgs(string chaincodeName, List<string> args, string channel);
+        Response InvokeChaincodeWithStringArgs(string chaincodeName, List<string> arguments, string channel);
         //{
         //	return invokeChaincode(chaincodeName, args.stream().map(x -> x.getBytes(UTF_8)).collect(toList()), channel);
         //}
@@ -261,7 +268,7 @@ namespace Hyperledger.Fabric.Shim
          *            Arguments to pass on to the called chaincode.
          * @return
          */
-        Response InvokeChaincodeWithStringArgs(string chaincodeName, List<string> args);
+        Response InvokeChaincodeWithStringArgs(string chaincodeName, List<string> arguments);
         //{
         //return invokeChaincodeWithStringArgs(chaincodeName, args, null);
         //}
@@ -279,7 +286,7 @@ namespace Hyperledger.Fabric.Shim
          *            Arguments to pass on to the called chaincode.
          * @return
          */
-        Response InvokeChaincodeWithStringArgs(string chaincodeName, params string[] args);
+        Response InvokeChaincodeWithStringArgs(string chaincodeName, params string[] arguments);
         //{
 //		return invokeChaincodeWithStringArgs(chaincodeName, Arrays.asList(args), null);
 //	}
@@ -305,18 +312,6 @@ namespace Hyperledger.Fabric.Shim
          * @param value
          *            the value to write to the ledger
          */
-        void PutStringState(String key, String value);
-        //{
-        //putState(key, value.getBytes(UTF_8));
-        //}
-
-        /**
-         * Returns the CHAINCODE type event that will be posted to interested
-         * clients when the chaincode's result is committed to the ledger.
-         *
-         * @return the chaincode event or null
-         */
-        ChaincodeEvent Event { get; }
-
+        void PutStringState(string key, string value);
     }
 }

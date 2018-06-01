@@ -1,6 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text;
+using System.Threading.Tasks;
 using Google.Protobuf;
 using Hyperledger.Fabric.Protos.Peer;
 using Newtonsoft.Json;
@@ -33,6 +35,28 @@ namespace Hyperledger.Fabric.Shim.Helper
             catch (InvalidProtocolBufferException)
             {
                 return $"{{ Type: {message.Type}, TxId: {message.Txid} }}";
+            }
+        }
+        public static T RunAndUnwarp<T>(this Task<T> func)
+        {
+            try
+            {
+                return func.GetAwaiter().GetResult();
+            }
+            catch (AggregateException e)
+            {
+                throw e.Flatten().InnerExceptions.First();
+            }
+        }
+        public static void RunAndUnwarp(this Task func)
+        {
+            try
+            {
+                func.GetAwaiter().GetResult();
+            }
+            catch (AggregateException e)
+            {
+                throw e.Flatten().InnerExceptions.First();
             }
         }
     }

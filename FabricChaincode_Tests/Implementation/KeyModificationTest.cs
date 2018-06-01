@@ -30,32 +30,32 @@ namespace Hyperledger.Fabric.Shim.Tests.Implementation
         [TestMethod]
         public void TestKeyModificationImpl()
         {
-            var _=new Hyperledger.Fabric.Shim.Impl.KeyModification(new KeyModification {TxId = "txid", Value = ByteString.CopyFromUtf8("value"), Timestamp = new Timestamp {Nanos = 123456789, Seconds = 1234567890}, IsDelete = true});
+            var _=new Shim.Implementation.KeyModification(new KeyModification {TxId = "txid", Value = ByteString.CopyFromUtf8("value"), Timestamp = new Timestamp {Nanos = 123456789, Seconds = 1234567890}, IsDelete = true});
         }
         [TestMethod]
         public void TestGetTxId()
         {
-            Hyperledger.Fabric.Shim.Impl.KeyModification km = new Hyperledger.Fabric.Shim.Impl.KeyModification(new KeyModification {TxId = "txid"});
+            Shim.Implementation.KeyModification km = new Shim.Implementation.KeyModification(new KeyModification {TxId = "txid"});
             Assert.AreEqual(km.TxId, "txid");
         }
         [TestMethod]
         public void TestGetValue()
         {
-            Hyperledger.Fabric.Shim.Impl.KeyModification km = new Hyperledger.Fabric.Shim.Impl.KeyModification(new KeyModification {Value = ByteString.CopyFromUtf8("value")});
+            Shim.Implementation.KeyModification km = new Shim.Implementation.KeyModification(new KeyModification {Value = ByteString.CopyFromUtf8("value")});
             CollectionAssert.AreEqual(km.Value, "value".ToBytes());
         }
 
         [TestMethod]
         public void TestGetStringValue()
         {
-            Hyperledger.Fabric.Shim.Impl.KeyModification km = new Hyperledger.Fabric.Shim.Impl.KeyModification(new KeyModification {Value = ByteString.CopyFromUtf8("value")});
+            Shim.Implementation.KeyModification km = new Shim.Implementation.KeyModification(new KeyModification {Value = ByteString.CopyFromUtf8("value")});
             Assert.AreEqual(km.StringValue, "value");
         }
 
         [TestMethod]
         public void TestGetTimestamp()
         {
-            Hyperledger.Fabric.Shim.Impl.KeyModification km = new Hyperledger.Fabric.Shim.Impl.KeyModification(new KeyModification {Timestamp = new Timestamp {Nanos = 123456789, Seconds = 1234567890}});
+            Shim.Implementation.KeyModification km = new Shim.Implementation.KeyModification(new KeyModification {Timestamp = new Timestamp {Nanos = 123456789, Seconds = 1234567890}});
             DateTime s = new Timestamp {Nanos = 123456789, Seconds = 1234567890}.ToDateTime();
             Assert.AreEqual(km.Timestamp, s);
         }
@@ -65,7 +65,7 @@ namespace Hyperledger.Fabric.Shim.Tests.Implementation
         {
             new List<bool> {true, false}.ForEach((b) =>
             {
-                Hyperledger.Fabric.Shim.Impl.KeyModification km = new Hyperledger.Fabric.Shim.Impl.KeyModification(new KeyModification {IsDelete = b});
+                Shim.Implementation.KeyModification km = new Shim.Implementation.KeyModification(new KeyModification {IsDelete = b});
                 Assert.AreEqual(km.IsDeleted, b);
             });
         }

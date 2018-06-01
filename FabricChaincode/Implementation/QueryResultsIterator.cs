@@ -21,7 +21,7 @@ using System.Linq;
 using Hyperledger.Fabric.Protos.Peer;
 using Hyperledger.Fabric.Shim.Ledger;
 
-namespace Hyperledger.Fabric.Shim.Impl
+namespace Hyperledger.Fabric.Shim.Implementation
 {
     public class QueryResultsIterator<T> : IQueryResultsIterator<T>
     {
@@ -31,7 +31,7 @@ namespace Hyperledger.Fabric.Shim.Impl
         private readonly string txId;
         private List<QueryResultBytes> currentIterator;
         private QueryResponse currentQueryResponse;
-        private bool disposed = false;
+        private bool disposed;
         private readonly Func<QueryResultBytes, T> mapper;
 
         public QueryResultsIterator(Handler handler, string channelId, string txId, QueryResponse queryResponse, Func<QueryResultBytes, T> mapper)

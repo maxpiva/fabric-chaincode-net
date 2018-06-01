@@ -18,7 +18,7 @@ using Google.Protobuf;
 using Hyperledger.Fabric.Protos.Ledger.QueryResult;
 using Hyperledger.Fabric.Shim.Ledger;
 
-namespace Hyperledger.Fabric.Shim.Impl
+namespace Hyperledger.Fabric.Shim.Implementation
 {
     public class KeyValue : IKeyValue
     {

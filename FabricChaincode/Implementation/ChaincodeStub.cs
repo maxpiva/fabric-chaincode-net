@@ -13,30 +13,6 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 */
-/*
-package org.hyperledger.fabric.shim.impl;
-
-import static java.util.stream.Collectors.toList;
-
-import java.util.Collections;
-import java.util.List;
-import java.util.function.Function;
-import java.util.stream.Collectors;
-
-import org.hyperledger.fabric.protos.ledger.queryresult.KvQueryResult;
-import org.hyperledger.fabric.protos.ledger.queryresult.KvQueryResult.KV;
-import org.hyperledger.fabric.protos.peer.ChaincodeEventPackage.ChaincodeEvent;
-import org.hyperledger.fabric.protos.peer.ChaincodeShim.QueryResultBytes;
-import org.hyperledger.fabric.shim.Chaincode.Response;
-import org.hyperledger.fabric.shim.ChaincodeStub;
-import org.hyperledger.fabric.shim.ledger.CompositeKey;
-import org.hyperledger.fabric.shim.ledger.KeyModification;
-import org.hyperledger.fabric.shim.ledger.KeyValue;
-import org.hyperledger.fabric.shim.ledger.QueryResultsIterator;
-
-import com.google.protobuf.ByteString;
-import com.google.protobuf.InvalidProtocolBufferException;
-*/
 
 using System;
 using System.Collections.Generic;
@@ -47,7 +23,7 @@ using Hyperledger.Fabric.Protos.Peer;
 using Hyperledger.Fabric.Shim.Helper;
 using Hyperledger.Fabric.Shim.Ledger;
 
-namespace Hyperledger.Fabric.Shim.Impl
+namespace Hyperledger.Fabric.Shim.Implementation
 {
     public class ChaincodeStub : IChaincodeStub
     {
@@ -77,24 +53,24 @@ namespace Hyperledger.Fabric.Shim.Impl
             Event = payload != null ? new ChaincodeEvent {EventName = name, Payload = ByteString.CopyFrom(payload)} : new ChaincodeEvent {EventName = name};
         }
 
-        public Response InvokeChaincode(string chaincodeName, List<byte[]> args)
+        public Response InvokeChaincode(string chaincodeName, List<byte[]> arguments)
         {
-            return InvokeChaincode(chaincodeName, args, null);
+            return InvokeChaincode(chaincodeName, arguments, null);
         }
 
-        public Response InvokeChaincodeWithStringArgs(string chaincodeName, List<string> args, string channel)
+        public Response InvokeChaincodeWithStringArgs(string chaincodeName, List<string> arguments, string channel)
         {
-            return InvokeChaincode(chaincodeName, args.Select(a=>a.ToBytes()).ToList(), channel);
+            return InvokeChaincode(chaincodeName, arguments.Select(a=>a.ToBytes()).ToList(), channel);
         }
 
-        public Response InvokeChaincodeWithStringArgs(string chaincodeName, List<string> args)
+        public Response InvokeChaincodeWithStringArgs(string chaincodeName, List<string> arguments)
         {
-            return InvokeChaincodeWithStringArgs(chaincodeName, args, null);
+            return InvokeChaincodeWithStringArgs(chaincodeName, arguments, null);
         }
 
-        public Response InvokeChaincodeWithStringArgs(string chaincodeName, params string[] args)
+        public Response InvokeChaincodeWithStringArgs(string chaincodeName, params string[] arguments)
         {
-            return InvokeChaincodeWithStringArgs(chaincodeName, args.ToList(), null);
+            return InvokeChaincodeWithStringArgs(chaincodeName, arguments.ToList(), null);
         }
 
         public string GetStringState(string key)
@@ -153,7 +129,7 @@ namespace Hyperledger.Fabric.Shim.Impl
             return GetQueryResult(query);
         }
 
-        public Response InvokeChaincode(string chaincodeName, List<byte[]> args, string channel)
+        public Response InvokeChaincode(string chaincodeName, List<byte[]> arguments, string channel)
         {
             // internally we handle chaincode name as a composite name
             string compositeName;
@@ -166,7 +142,7 @@ namespace Hyperledger.Fabric.Shim.Impl
                 compositeName = chaincodeName;
             }
 
-            return handler.InvokeChaincode(ChannelId, TxId, compositeName, args);
+            return handler.InvokeChaincode(ChannelId, TxId, compositeName, arguments);
         }
 
 
