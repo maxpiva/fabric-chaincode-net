@@ -1,0 +1,31 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio 15
+VisualStudioVersion = 15.0.27703.2018
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "FabricChaincode", "FabricChaincode\FabricChaincode.csproj", "{E42139D9-2921-4510-9A80-5F59F4A62F43}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FabricChaincode_Tests", "FabricChaincode_Tests\FabricChaincode_Tests.csproj", "{763B70B3-96A3-4F64-8EBF-C2A49A656715}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{E42139D9-2921-4510-9A80-5F59F4A62F43}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{E42139D9-2921-4510-9A80-5F59F4A62F43}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{E42139D9-2921-4510-9A80-5F59F4A62F43}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{E42139D9-2921-4510-9A80-5F59F4A62F43}.Release|Any CPU.Build.0 = Release|Any CPU
+		{763B70B3-96A3-4F64-8EBF-C2A49A656715}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{763B70B3-96A3-4F64-8EBF-C2A49A656715}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{763B70B3-96A3-4F64-8EBF-C2A49A656715}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{763B70B3-96A3-4F64-8EBF-C2A49A656715}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {03264896-741D-4B53-BE16-C46C62DA4D65}
+	EndGlobalSection
+EndGlobal

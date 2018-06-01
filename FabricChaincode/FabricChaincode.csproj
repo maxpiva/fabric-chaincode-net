@@ -1,0 +1,30 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <AssemblyName>Hyperledger.Fabric.Shim</AssemblyName>
+    <RootNamespace>Hyperledger.Fabric.Shim</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Google.Protobuf" Version="3.5.1" />
+    <PackageReference Include="Grpc.Tools" Version="1.12.0" />
+    <PackageReference Include="Grpc.Tools.MsBuild.Unofficial" Version="1.0.51" />
+    <PackageReference Include="LibLog" Version="5.0.0" />
+    <PackageReference Include="Mono.Options" Version="5.3.0.1" />
+    <PackageReference Include="Newtonsoft.Json" Version="11.0.2" />
+  </ItemGroup>
+  <ItemGroup Condition=" '$(TargetFramework)' == 'net47'">
+    <PackageReference Include="Grpc" Version="1.12.0" />
+  </ItemGroup>
+  <ItemGroup Condition=" '$(TargetFramework)' == 'netstandard2.0'">
+    <PackageReference Include="Grpc.Core" Version="1.12.0" />
+  </ItemGroup>
+  <PropertyGroup>
+    <GrpcToolsVersion>1.12.0</GrpcToolsVersion>
+    <GrpcIncludeFolders>$(SolutionDir)ProtoBuf;$(SolutionDir)FabricChaincode\Proto</GrpcIncludeFolders>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProtoIncludeFolder Include="$(SolutionDir)ProtoBuf" />
+    <ProtoIncludeFolder Include="$(SolutionDir)FabricChaincode\Proto" />
+  </ItemGroup>
+</Project>
