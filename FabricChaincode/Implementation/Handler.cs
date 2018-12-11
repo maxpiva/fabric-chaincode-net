@@ -11,80 +11,140 @@ using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using Google.Protobuf;
-using Grpc.Core;
 using Hyperledger.Fabric.Protos.Peer;
-using Hyperledger.Fabric.Shim.Fsm;
-using Hyperledger.Fabric.Shim.Fsm.Exceptions;
-using Hyperledger.Fabric.Shim.Helper;
 using Hyperledger.Fabric.Shim.Logging;
+using Newtonsoft.Json;
 
 namespace Hyperledger.Fabric.Shim.Implementation
 {
     public class Handler
     {
         private static readonly ILog logger = LogProvider.GetLogger(typeof(Handler));
-        private readonly ChaincodeBase chaincode;
 
-        private readonly AsyncDuplexStreamingCall<ChaincodeMessage, ChaincodeMessage> chatStream;
+        private readonly IChaincode chaincode;
 
-        private readonly FSM fsm;
 
         private readonly Dictionary<string, bool> isTransaction;
-        public BlockingCollection<NextStateInfo> nextState;
+        private readonly BlockingCollection<ChaincodeMessage> outboundChaincodeMessages = new BlockingCollection<ChaincodeMessage>();
         private readonly Dictionary<string, BlockingCollection<ChaincodeMessage>> responseChannel;
 
-        public Handler(AsyncDuplexStreamingCall<ChaincodeMessage, ChaincodeMessage> chatStream, ChaincodeBase chaincode)
+        public Handler(ChaincodeID chaincodeId, IChaincode chaincode)
         {
-            this.chatStream = chatStream;
             this.chaincode = chaincode;
-
-            responseChannel = new Dictionary<string, BlockingCollection<ChaincodeMessage>>();
-            isTransaction = new Dictionary<string, bool>();
-            nextState = new BlockingCollection<NextStateInfo>();
-
-            fsm = new FSM("created");
-
-            fsm.AddEvents(
-                //            Event Name              From           To
-                new EventDesc(ChaincodeMessage.Types.Type.Register.ToString().ToUpperInvariant(), "created", "established"), new EventDesc(ChaincodeMessage.Types.Type.Ready.ToString().ToUpperInvariant(), "established", "ready"), new EventDesc(ChaincodeMessage.Types.Type.Error.ToString().ToUpperInvariant(), "init", "established"), new EventDesc(ChaincodeMessage.Types.Type.Response.ToString().ToUpperInvariant(), "init", "init"), new EventDesc(ChaincodeMessage.Types.Type.Init.ToString().ToUpperInvariant(), "ready", "ready"), new EventDesc(ChaincodeMessage.Types.Type.Transaction.ToString().ToUpperInvariant(), "ready", "ready"), new EventDesc(ChaincodeMessage.Types.Type.Response.ToString().ToUpperInvariant(), "ready", "ready"), new EventDesc(ChaincodeMessage.Types.Type.Error.ToString().ToUpperInvariant(), "ready", "ready"), new EventDesc(ChaincodeMessage.Types.Type.Completed.ToString().ToUpperInvariant(), "init", "ready"), new EventDesc(ChaincodeMessage.Types.Type.Completed.ToString().ToUpperInvariant(), "ready", "ready"));
-
-            fsm.AddCallbacks(
-                //         Type          Trigger                Callback
-                new CBDesc(CallbackType.BEFORE_EVENT, ChaincodeMessage.Types.Type.Register.ToString().ToUpperInvariant(), (evnt) => BeforeRegistered(evnt)), new CBDesc(CallbackType.AFTER_EVENT, ChaincodeMessage.Types.Type.Response.ToString().ToUpperInvariant(), (evnt) => AfterResponse(evnt)), new CBDesc(CallbackType.AFTER_EVENT, ChaincodeMessage.Types.Type.Error.ToString().ToUpperInvariant(), (evnt) => AfterError(evnt)), new CBDesc(CallbackType.BEFORE_EVENT, ChaincodeMessage.Types.Type.Init.ToString().ToUpperInvariant(), (evnt) => BeforeInit(evnt)), new CBDesc(CallbackType.BEFORE_EVENT, ChaincodeMessage.Types.Type.Transaction.ToString().ToUpperInvariant(), (evnt) => BeforeTransaction(evnt)));
+            State = CCState.CREATED;
+            QueueOutboundChaincodeMessage(NewRegisterChaincodeMessage(chaincodeId));
         }
 
-        private void TriggerNextState(ChaincodeMessage message, bool send)
+        public CCState State { get; private set; }
+
+        public ChaincodeMessage NextOutboundChaincodeMessage()
         {
-            if (logger.IsTraceEnabled())
-                logger.Trace($"triggerNextState for message {message}");
-            nextState.Add(new NextStateInfo(message, send));
-            nextState.CompleteAdding();
+            try
+            {
+                return outboundChaincodeMessages.Take();
+            }
+            catch (InvalidOperationException e)
+            {
+                return NewErrorEventMessage("UNKNOWN", "UNKNOWN", e);
+            }
+        }
+
+        public void OnChaincodeMessage(ChaincodeMessage chaincodeMessage)
+        {
+            logger.Trace($"[{chaincodeMessage.Txid,-8}s] {ToJsonString(chaincodeMessage)}");
+            HandleChaincodeMessage(chaincodeMessage);
         }
 
         [MethodImpl(MethodImplOptions.Synchronized)]
-        public void SerialSend(ChaincodeMessage message)
+        private void HandleChaincodeMessage(ChaincodeMessage message)
         {
-            logger.Debug($"[{message.Txid,-8}]Sending {message.Type} message to peer.", message.Txid, message.Type);
-            if (logger.IsTraceEnabled())
-                logger.Trace($"[{message.Txid,-8}]ChaincodeMessage: {message.ToJsonString()}");
-            try
+            logger.Debug($"[{message.Txid,-8}s] Handling ChaincodeMessage of type: {message.Type}, handler state {State}");
+            if (message.Type == ChaincodeMessage.Types.Type.Keepalive)
             {
-                chatStream.RequestStream.WriteAsync(message).RunAndUnwarp();
-                if (logger.IsTraceEnabled())
-                    logger.Trace($"[{message.Txid,-8}] {message.Type} sent.");
+                logger.Trace($"[{message.Txid,-8}s] Received KEEPALIVE: nothing to do");
+                return;
             }
-            catch (Exception e)
+
+            switch (State)
             {
-                logger.Error($"[{message.Txid,-8}] Error sending {message.Type}: {e.Message}");
-                throw;
+                case CCState.CREATED:
+                    HandleCreated(message);
+                    break;
+                case CCState.ESTABLISHED:
+                    HandleEstablished(message);
+                    break;
+                case CCState.READY:
+                    HandleReady(message);
+                    break;
+                default:
+                    logger.Warn($"[{message.Txid,-8}s] Received {message.Type}: cannot handle");
+                    break;
             }
+        }
+
+        private void HandleCreated(ChaincodeMessage message)
+        {
+            if (message.Type == ChaincodeMessage.Types.Type.Register)
+            {
+                State = CCState.ESTABLISHED;
+                logger.Trace($"[{message.Txid,-8}s] Received REGISTERED: moving to established state");
+            }
+            else
+                logger.Warn($"[{message.Txid,-8}s] Received {message.Type}: cannot handle");
+        }
+
+        private void HandleEstablished(ChaincodeMessage message)
+        {
+            if (message.Type == ChaincodeMessage.Types.Type.Ready)
+            {
+                State = CCState.ESTABLISHED;
+                logger.Trace($"[{message.Txid,-8}s] Received READY: ready for invocations");
+            }
+            else
+                logger.Warn($"[{message.Txid,-8}s] Received {message.Type}: cannot handle");
+        }
+
+        private void HandleReady(ChaincodeMessage message)
+        {
+            switch (message.Type)
+            {
+                case ChaincodeMessage.Types.Type.Response:
+                    logger.Trace($"[{message.Txid,-8}s] Received RESPONSE: publishing to channel");
+                    SendChannel(message);
+                    break;
+                case ChaincodeMessage.Types.Type.Error:
+                    logger.Trace($"[{message.Txid,-8}s] Received ERROR: publishing to channel");
+                    SendChannel(message);
+                    break;
+                case ChaincodeMessage.Types.Type.Init:
+                    logger.Trace($"[{message.Txid,-8}s] Received INIT: invoking chaincode init");
+                    HandleInit(message);
+                    break;
+                case ChaincodeMessage.Types.Type.Transaction:
+                    logger.Trace($"[{message.Txid,-8}s] Received TRANSACTION: invoking chaincode");
+                    HandleTransaction(message);
+                    break;
+                default:
+                    logger.Warn($"[{message.Txid,-8}s] Received {message.Type}: cannot handle");
+                    break;
+            }
+        }
+
+        private string GetTxKey(string channelId, string txid)
+        {
+            return channelId + txid;
+        }
+
+        private void QueueOutboundChaincodeMessage(ChaincodeMessage chaincodeMessage)
+        {
+            outboundChaincodeMessages.Add(chaincodeMessage);
         }
 
         [MethodImpl(MethodImplOptions.Synchronized)]
         private BlockingCollection<ChaincodeMessage> AquireResponseChannelForTx(string channelId, string txId)
         {
             BlockingCollection<ChaincodeMessage> channel = new BlockingCollection<ChaincodeMessage>();
-            string key = channelId + txId;
+            string key = GetTxKey(channelId, txId);
             lock (responseChannel)
             {
                 if (responseChannel.ContainsKey(key))
@@ -92,20 +152,19 @@ namespace Hyperledger.Fabric.Shim.Implementation
                 responseChannel.Add(key, channel);
             }
 
-            if (logger.IsTraceEnabled())
-                logger.Trace($"[{txId,-8}]Response channel created.");
+            logger.Trace($"[{txId,-8}]Response channel created.");
             return channel;
         }
 
         [MethodImpl(MethodImplOptions.Synchronized)]
         private void SendChannel(ChaincodeMessage message)
         {
-            string key = message.ChannelId + message.Txid;
+            string key = GetTxKey(message.ChannelId, message.Txid);
             lock (responseChannel)
             {
                 if (!responseChannel.ContainsKey(key))
                     throw new InvalidOperationException($"[{message.Txid},-8]sendChannel does not exist");
-                logger.Debug($"[{message.Txid},-8]Before send");
+                logger.Debug($"[{message.Txid},-8.8]Before send");
                 responseChannel[key].Add(message);
                 responseChannel[key].CompleteAdding();
                 logger.Debug($"[{message.Txid},-8]After send");
@@ -121,7 +180,7 @@ namespace Hyperledger.Fabric.Shim.Implementation
             }
             catch (Exception)
             {
-                logger.Debug("channel.take() failed");
+                logger.Trace("channel.take() failed");
                 // Channel has been closed?
                 // TODO
                 return null;
@@ -131,25 +190,20 @@ namespace Hyperledger.Fabric.Shim.Implementation
         [MethodImpl(MethodImplOptions.Synchronized)]
         private void ReleaseResponseChannelForTx(string channelId, string txId)
         {
-            string key = channelId + txId;
+            string key = GetTxKey(channelId, txId);
             lock (responseChannel)
             {
                 responseChannel.Remove(key);
             }
 
-            if (logger.IsTraceEnabled())
-                logger.Trace($"[{txId},-8]Response channel closed.");
+            logger.Trace($"[{txId},-8]Response channel closed.");
         }
 
         /**
          * Marks a CHANNELID+UUID as either a transaction or a query
          *
-         * @param channelId
-         *            channel ID to be marked
-         * @param uuid
-         *            ID to be marked
-         * @param isTransaction
-         *            true for transaction, false for query
+         * @param uuid          ID to be marked
+         * @param isTransaction true for transaction, false for query
          * @return whether or not the UUID was successfully marked
          */
         [MethodImpl(MethodImplOptions.Synchronized)]
@@ -161,7 +215,7 @@ namespace Hyperledger.Fabric.Shim.Implementation
                 return false;
             }
 
-            string key = channelId + uuid;
+            string key = GetTxKey(channelId, uuid);
             isTransaction.Add(key, istransact);
             return true;
         }
@@ -169,40 +223,21 @@ namespace Hyperledger.Fabric.Shim.Implementation
         [MethodImpl(MethodImplOptions.Synchronized)]
         private void DeleteIsTransaction(string channelId, string uuid)
         {
-            string key = channelId + uuid;
+            string key = GetTxKey(channelId, uuid);
             isTransaction.Remove(key);
         }
 
-        private void BeforeRegistered(FSMEvent evnt)
-        {
-            ExtractMessageFromEvent(evnt);
-            logger.Debug($"Received {ChaincodeMessage.Types.Type.Register}, ready for invocations");
-        }
 
         /**
-	 * Handles requests to initialize chaincode
-	 *
-	 * @param message
-	 *            chaincode to be initialized
-	 */
+         * Handles requests to initialize chaincode
+         *
+         * @param message chaincode to be initialized
+         */
         private void HandleInit(ChaincodeMessage message)
         {
             HandleTransaction(message);
         }
 
-        // enterInitState will initialize the chaincode if entering init from established.
-        private void BeforeInit(FSMEvent evnt)
-        {
-            logger.Debug($"Before {evnt.Name} event.");
-            logger.Debug($"Current state {fsm.Current}");
-            ChaincodeMessage message = ExtractMessageFromEvent(evnt);
-            logger.Debug($"[{message.Txid},-8]Received {message.Type}, initializing chaincode");
-            if (message.Type == ChaincodeMessage.Types.Type.Init)
-            {
-                // Call the chaincode's Run function to initialize
-                HandleInit(message);
-            }
-        }
 
         // handleTransaction Handles request to execute a transaction.
         private void HandleTransaction(ChaincodeMessage message)
@@ -219,7 +254,7 @@ namespace Hyperledger.Fabric.Shim.Implementation
 
                     // Create the ChaincodeStub which the chaincode can use to
                     // callback
-                    IChaincodeStub stub = new ChaincodeStub(message.ChannelId, message.Txid, this, input.Args.ToList());
+                    IChaincodeStub stub = new ChaincodeStub(message.ChannelId, message.Txid, this, input.Args.ToList(), message.Proposal);
 
                     // Call chaincode's init
                     Response result = chaincode.Init(stub);
@@ -228,19 +263,19 @@ namespace Hyperledger.Fabric.Shim.Implementation
                     {
                         // Send ERROR with entire result.Message as payload
                         logger.Error($"[{message.Txid},-8]Init failed. Sending {ChaincodeMessage.Types.Type.Error}");
-                        TriggerNextState(NewErrorEventMessage(message.ChannelId, message.Txid, result.Message, stub.Event), true);
+                        QueueOutboundChaincodeMessage(NewErrorEventMessage(message.ChannelId, message.Txid, result.Message, stub.Event));
                     }
                     else
                     {
                         // Send COMPLETED with entire result as payload
-                        logger.Debug($"[{message.Txid},-8]Init succeeded. Sending {ChaincodeMessage.Types.Type.Completed}");
-                        TriggerNextState(NewCompletedEventMessage(message.ChannelId, message.Txid, result, stub.Event), true);
+                        logger.Trace($"[{message.Txid},-8]Init succeeded. Sending {ChaincodeMessage.Types.Type.Completed}");
+                        QueueOutboundChaincodeMessage(NewCompletedEventMessage(message.ChannelId, message.Txid, result, stub.Event));
                     }
                 }
                 catch (Exception e)
                 {
                     logger.ErrorException($"[{message.Txid},-8]Init failed. Sending {ChaincodeMessage.Types.Type.Error}", e);
-                    TriggerNextState(NewErrorEventMessage(message.ChannelId, message.Txid, e), true);
+                    QueueOutboundChaincodeMessage(NewErrorEventMessage(message.ChannelId, message.Txid, e));
                 }
                 finally
                 {
@@ -250,105 +285,37 @@ namespace Hyperledger.Fabric.Shim.Implementation
             });
         }
 
-        // enterTransactionState will execute chaincode's Run if coming from a TRANSACTION event.
-        private void BeforeTransaction(FSMEvent evnt)
-        {
-            ChaincodeMessage message = ExtractMessageFromEvent(evnt);
-            logger.Debug($"[{message.Txid}Received {message.Type}, invoking transaction on chaincode(src:{evnt.Src}, dst:{evnt.Dst})");
-            if (message.Type == ChaincodeMessage.Types.Type.Transaction)
-            {
-                // Call the chaincode's Run function to invoke transaction
-                HandleTransaction(message);
-            }
-        }
-
-        // afterResponse is called to deliver a response or error to the chaincode stub.
-        private void AfterResponse(FSMEvent evnt)
-        {
-            ChaincodeMessage message = ExtractMessageFromEvent(evnt);
-            try
-            {
-                SendChannel(message);
-                logger.Debug($"[{message.Txid,-8}Received {message.Type}, communicated (state:{fsm.Current})");
-            }
-            catch (Exception e)
-            {
-                logger.Error($"[{message.Txid,-8}error sending {message.Type} (state:{fsm.Current}): {e.Message}");
-            }
-        }
-
-        private ChaincodeMessage ExtractMessageFromEvent(FSMEvent evnt)
-        {
-            try
-            {
-                return (ChaincodeMessage) evnt.Args[0];
-            }
-            catch (Exception e)
-            {
-                InvalidOperationException error = new InvalidOperationException("No chaincode message found in event.", e);
-                evnt.Cancel(error);
-                throw error;
-            }
-        }
-
-        private void AfterError(FSMEvent evnt)
-        {
-            ChaincodeMessage message = ExtractMessageFromEvent(evnt);
-            /*
-             * TODO- revisit. This may no longer be needed with the
-             * serialized/streamlined messaging model There are two situations in
-             * which the ERROR event can be triggered:
-             *
-             * 1. When an error is encountered within handleInit or
-             * handleTransaction - some issue at the chaincode side; In this case
-             * there will be no responseChannel and the message has been sent to the
-             * validator.
-             *
-             * 2. The chaincode has initiated a request (get/put/del state) to the
-             * validator and is expecting a response on the responseChannel; If
-             * ERROR is received from validator, this needs to be notified on the
-             * responseChannel.
-             */
-            try
-            {
-                SendChannel(message);
-            }
-            catch (Exception e)
-            {
-                logger.Debug($"[{message.Txid,-8}Error received from validator {message.Type}, communicated(state:{fsm.Current}). {e.Message}");
-            }
-        }
 
         // handleGetState communicates with the validator to fetch the requested state information from the ledger.
-        public ByteString GetState(string channelId, string txId, string key)
+        public ByteString GetState(string channelId, string txId, string collection, string key)
         {
-            return InvokeChaincodeSupport(NewGetStateEventMessage(channelId, txId, key));
+            return InvokeChaincodeSupport(NewGetStateEventMessage(channelId, txId, collection, key));
         }
 
         private bool IsTransaction(string channelId, string uuid)
         {
-            string key = channelId + uuid;
+            string key = GetTxKey(channelId, uuid);
             return isTransaction.ContainsKey(key) && isTransaction[key];
         }
 
-        public void PutState(string channelId, string txId, string key, ByteString value)
+        public void PutState(string channelId, string txId, string collection, string key, ByteString value)
         {
-            logger.Debug($"[{txId,-8}]Inside putstate (\"{key}\":\"{value}\"), isTransaction = {IsTransaction(channelId, txId)}");
+            logger.Trace($"[{txId,-8}]Inside putstate (\"{collection}\":\"{key}\":\"{value}\"), isTransaction = {IsTransaction(channelId, txId)}");
             if (!IsTransaction(channelId, txId))
                 throw new InvalidOperationException("Cannot put state in query context");
-            InvokeChaincodeSupport(NewPutStateEventMessage(channelId, txId, key, value));
+            InvokeChaincodeSupport(NewPutStateEventMessage(channelId, txId, collection, key, value));
         }
 
-        public void DeleteState(string channelId, string txId, string key)
+        public void DeleteState(string channelId, string txId, string collection, string key)
         {
             if (!IsTransaction(channelId, txId))
                 throw new InvalidOperationException("Cannot del state in query context");
-            InvokeChaincodeSupport(NewDeleteStateEventMessage(channelId, txId, key));
+            InvokeChaincodeSupport(NewDeleteStateEventMessage(channelId, txId, collection, key));
         }
 
-        public QueryResponse GetStateByRange(string channelId, string txId, string startKey, string endKey)
+        public QueryResponse GetStateByRange(string channelId, string txId, string collection, string startKey, string endKey)
         {
-            return InvokeQueryResponseMessage(channelId, txId, ChaincodeMessage.Types.Type.GetStateByRange, new GetStateByRange {StartKey = startKey, EndKey = endKey}.ToByteString());
+            return InvokeQueryResponseMessage(channelId, txId, ChaincodeMessage.Types.Type.GetStateByRange, new GetStateByRange {StartKey = startKey, EndKey = endKey, Collection = collection}.ToByteString());
         }
 
         public QueryResponse QueryStateNext(string channelId, string txId, string queryId)
@@ -361,9 +328,9 @@ namespace Hyperledger.Fabric.Shim.Implementation
             InvokeQueryResponseMessage(channelId, txId, ChaincodeMessage.Types.Type.QueryStateClose, new QueryStateClose {Id = queryId}.ToByteString());
         }
 
-        public QueryResponse GetQueryResult(string channelId, string txId, string query)
+        public QueryResponse GetQueryResult(string channelId, string txId, string collection, string query)
         {
-            return InvokeQueryResponseMessage(channelId, txId, ChaincodeMessage.Types.Type.GetQueryResult, new GetQueryResult {Query = query}.ToByteString());
+            return InvokeQueryResponseMessage(channelId, txId, ChaincodeMessage.Types.Type.GetQueryResult, new GetQueryResult {Query = query, Collection = collection}.ToByteString());
         }
 
         public QueryResponse GetHistoryForKey(string channelId, string txId, string key)
@@ -379,7 +346,7 @@ namespace Hyperledger.Fabric.Shim.Implementation
             }
             catch (Exception e)
             {
-                logger.Error($"[{txId}unmarshall error");
+                logger.Error($"[{txId,-8}s] unmarshall error");
                 throw new InvalidOperationException("Error unmarshalling QueryResponse.", e);
             }
         }
@@ -395,17 +362,17 @@ namespace Hyperledger.Fabric.Shim.Implementation
                 BlockingCollection<ChaincodeMessage> respChannel = AquireResponseChannelForTx(channelId, txId);
 
                 // send the message
-                SerialSend(message);
+                QueueOutboundChaincodeMessage(message);
 
                 // wait for response
                 ChaincodeMessage response = ReceiveChannel(respChannel);
-                logger.Debug($"[{txId},-8]{response.Type} response received.");
+                logger.Trace($"[{txId},-8]{response.Type} response received.");
 
                 // handle response
                 switch (response.Type)
                 {
                     case ChaincodeMessage.Types.Type.Response:
-                        logger.Debug($"[{txId},-8]Successful response received.");
+                        logger.Trace($"[{txId},-8]Successful response received.");
                         return response.Payload;
                     case ChaincodeMessage.Types.Type.Error:
                         string error = $"[{txId},-8]Unsuccessful response received.";
@@ -436,7 +403,7 @@ namespace Hyperledger.Fabric.Shim.Implementation
                 // message (the actual response message)
                 ChaincodeMessage responseMessage = ChaincodeMessage.Parser.ParseFrom(payload);
                 // the actual response message must be of type COMPLETED
-                logger.Debug($"[{txId},-8]{responseMessage.Type} response received from other chaincode.");
+                logger.Trace($"[{txId},-8]{responseMessage.Type} response received from other chaincode.");
                 if (responseMessage.Type == ChaincodeMessage.Types.Type.Completed)
                 {
                     // success
@@ -454,43 +421,15 @@ namespace Hyperledger.Fabric.Shim.Implementation
             }
         }
 
-        // handleMessage message handles loop for org.hyperledger.fabric.shim side
-        // of chaincode/validator stream.
-        [MethodImpl(MethodImplOptions.Synchronized)]
-        public void HandleMessage(ChaincodeMessage message)
+        private static string ToJsonString(ChaincodeMessage message)
         {
-            if (message.Type == ChaincodeMessage.Types.Type.Keepalive)
-            {
-                logger.Debug($"[{message.Txid},-8]Received KEEPALIVE message, do nothing");
-                // Received a keep alive message, we don't do anything with it for
-                // now and it does not touch the state machine
-                return;
-            }
-
-            logger.Debug($"[{message.Txid},-8]Handling ChaincodeMessage of type: {message.Type}(state:{fsm.Current}x)");
-
-            if (fsm.EventCannotOccur(message.Type.ToString().ToUpperInvariant()))
-            {
-                string errStr = $"[{message.Txid},-8]Chaincode handler org.hyperledger.fabric.shim.fsm cannot handle message ({message.Type}) with payload size ({message.Payload.Length}) while in state: {fsm.Current}";
-                SerialSend(NewErrorEventMessage(message.ChannelId, message.Txid, errStr));
-                throw new InvalidOperationException(errStr);
-            }
-
-            // Filter errors to allow NoTransitionError and CanceledError
-            // to not propagate for cases where embedded Err == nil.
             try
             {
-                fsm.RaiseEvent(message.Type.ToString().ToUpperInvariant(), message);
+                return JsonConvert.SerializeObject(message);
             }
-            catch (NoTransitionException e)
+            catch (InvalidProtocolBufferException e)
             {
-                if (e.InnerException != null) throw;
-                logger.Debug($"[{message.Txid},-8]Ignoring NoTransitionError");
-            }
-            catch (CancelledException e)
-            {
-                if (e.InnerException != null) throw;
-                logger.Debug($"[{message.Txid},-8]Ignoring CanceledError", message.Txid);
+                return $"{{ Type: {message.Type}, TxId: {message.Txid} }}";
             }
         }
 
@@ -500,19 +439,19 @@ namespace Hyperledger.Fabric.Shim.Implementation
             return new Response(Status.INTERNAL_SERVER_ERROR, message, null);
         }
 
-        private static ChaincodeMessage NewGetStateEventMessage(string channelId, string txId, string key)
+        private static ChaincodeMessage NewGetStateEventMessage(string channelId, string txId, string collection, string key)
         {
-            return NewEventMessage(ChaincodeMessage.Types.Type.GetState, channelId, txId, new GetState {Key = key}.ToByteString());
+            return NewEventMessage(ChaincodeMessage.Types.Type.GetState, channelId, txId, new GetState {Key = key, Collection = collection}.ToByteString());
         }
 
-        private static ChaincodeMessage NewPutStateEventMessage(string channelId, string txId, string key, ByteString value)
+        private static ChaincodeMessage NewPutStateEventMessage(string channelId, string txId, string collection, string key, ByteString value)
         {
-            return NewEventMessage(ChaincodeMessage.Types.Type.PutState, channelId, txId, new PutState {Key = key, Value = value}.ToByteString());
+            return NewEventMessage(ChaincodeMessage.Types.Type.PutState, channelId, txId, new PutState {Key = key, Value = value, Collection = collection}.ToByteString());
         }
 
-        private static ChaincodeMessage NewDeleteStateEventMessage(string channelId, string txId, string key)
+        private static ChaincodeMessage NewDeleteStateEventMessage(string channelId, string txId, string collection, string key)
         {
-            return NewEventMessage(ChaincodeMessage.Types.Type.DelState, channelId, txId, new DelState {Key = key}.ToByteString());
+            return NewEventMessage(ChaincodeMessage.Types.Type.DelState, channelId, txId, new DelState {Key = key, Collection = collection}.ToByteString());
         }
 
         private static ChaincodeMessage NewErrorEventMessage(string channelId, string txId, Exception throwable)
@@ -540,6 +479,11 @@ namespace Hyperledger.Fabric.Shim.Implementation
             return NewEventMessage(ChaincodeMessage.Types.Type.InvokeChaincode, channelId, txId, payload, null);
         }
 
+        private static ChaincodeMessage NewRegisterChaincodeMessage(ChaincodeID chaincodeId)
+        {
+            return new ChaincodeMessage {Type = ChaincodeMessage.Types.Type.Register, Payload = chaincodeId.ToByteString()};
+        }
+
         private static ChaincodeMessage NewEventMessage(ChaincodeMessage.Types.Type type, string channelId, string txId, ByteString payload)
         {
             return NewEventMessage(type, channelId, txId, payload, null);
@@ -547,14 +491,10 @@ namespace Hyperledger.Fabric.Shim.Implementation
 
         private static ChaincodeMessage NewEventMessage(ChaincodeMessage.Types.Type type, string channelId, string txId, ByteString payload, ChaincodeEvent evnt)
         {
-            if (evnt == null)
-            {
-                return new ChaincodeMessage {Type = type, Txid = txId, Payload = payload, ChannelId = channelId};
-            }
-            else
-            {
-                return new ChaincodeMessage {Type = type, Txid = txId, Payload = payload, ChannelId = channelId, ChaincodeEvent = evnt};
-            }
+            ChaincodeMessage msg = new ChaincodeMessage {Type = type, ChannelId = channelId, Txid = txId, Payload = payload};
+            if (evnt != null)
+                msg.ChaincodeEvent = evnt;
+            return msg;
         }
 
         private static Protos.Peer.ProposalResponsePackage.Response ToProtoResponse(Response response)

@@ -31,6 +31,8 @@ namespace Hyperledger.Fabric.Shim
     public abstract class ChaincodeBase : IChaincode
     {
         private static readonly ILog logger = LogProvider.GetLogger(typeof(ChaincodeBase));
+        public static readonly string CORE_CHAINCODE_LOGGING_SHIM = "CORE_CHAINCODE_LOGGING_SHIM";
+        public static readonly string CORE_CHAINCODE_LOGGING_LEVEL = "CORE_CHAINCODE_LOGGING_LEVEL";
 
         public static readonly string DEFAULT_HOST = "127.0.0.1";
         public static readonly int DEFAULT_PORT = 7051;
@@ -38,20 +40,22 @@ namespace Hyperledger.Fabric.Shim
         private static readonly string CORE_CHAINCODE_ID_NAME = "CORE_CHAINCODE_ID_NAME";
         private static readonly string CORE_PEER_ADDRESS = "CORE_PEER_ADDRESS";
         private static readonly string CORE_PEER_TLS_ENABLED = "CORE_PEER_TLS_ENABLED";
-        private static readonly string CORE_PEER_TLS_SERVERHOSTOVERRIDE = "CORE_PEER_TLS_SERVERHOSTOVERRIDE";
         private static readonly string CORE_PEER_TLS_ROOTCERT_FILE = "CORE_PEER_TLS_ROOTCERT_FILE";
+        private static readonly string ENV_TLS_CLIENT_KEY_PATH = "CORE_TLS_CLIENT_KEY_PATH";
+        private static readonly string ENV_TLS_CLIENT_CERT_PATH = "CORE_TLS_CLIENT_CERT_PATH";
 
         private Handler handler;
+        private OptionSet options;
         private bool help;
 
-        private string host = DEFAULT_HOST;
-        private string hostOverrideAuthority = "";
-        private string id;
-        private OptionSet options;
-        private int port = DEFAULT_PORT;
-        private string rootCertFile = "/etc/hyperledger/fabric/peer.crt";
-        private bool tlsEnabled;
+        public string Host { get; set; }= DEFAULT_HOST;
+        public string Id { get; set; }
+        public int Port { get; set; }= DEFAULT_PORT;
 
+        public bool IsTlsEnabled { get; set; }
+        public string TlsClientKeyPath { get; set; }
+        public string TlsClientCertPath { get; set; }
+        public string TlsClientRootCertPath { get; set; }
 
         public abstract Response Init(IChaincodeStub stub);
 
@@ -64,33 +68,26 @@ namespace Hyperledger.Fabric.Shim
             try
             {
                 string peerAddress = null;
-                string hname = null;
-                options = new OptionSet {{"a|peerAddress", "Address of peer to connect to", a => peerAddress = a}, {"s|securityEnabled", "Present if security is enabled", a => tlsEnabled = a != null}, {"i|id", "Identity of chaincode", a => id = a}, {"o|hostNameOverride", "Hostname override for server certificate", a => hname = a}, {"h|help|?", "Show help", a => help = a != null}};
+                options = new OptionSet
+                {
+                    {"a|peerAddress|peer.address", "Address of peer to connect to", a => peerAddress = a},
+                    { "i|id", "Identity of chaincode", a => Id = a}
+                };
                 options.Parse(args);
                 if (help)
                     return;
                 if (!string.IsNullOrEmpty(peerAddress))
                 {
-                    if (host.Contains(":"))
+                    if (Host.Contains(":"))
                     {
-                        string[] spl = host.Split(':');
-                        host = spl[0];
-                        port = int.Parse(spl[1]);
+                        string[] spl = Host.Split(':');
+                        Host = spl[0];
+                        Port = int.Parse(spl[1]);
                     }
                     else
                     {
-                        host = peerAddress;
-                        port = DEFAULT_PORT;
-                    }
-                }
-
-                if (tlsEnabled)
-                {
-                    logger.Info("TLS enabled");
-                    if (!string.IsNullOrEmpty(hname))
-                    {
-                        logger.Info($"server host override given {hname}");
-                        hostOverrideAuthority = hname;
+                        Host = peerAddress;
+                        Port = DEFAULT_PORT;
                     }
                 }
             }
@@ -98,27 +95,73 @@ namespace Hyperledger.Fabric.Shim
             {
                 logger.Warn("cli parsing failed with exception", e);
             }
+            logger.Info("<<<<<<<<<<<<<CommandLine options>>>>>>>>>>>>");
+            logger.Info("CORE_CHAINCODE_ID_NAME: " + this.Id);
+            logger.Info("CORE_PEER_ADDRESS: " + this.Host + ":" + this.Port);
+            logger.Info("CORE_PEER_TLS_ENABLED: " + this.IsTlsEnabled);
+            logger.Info("CORE_PEER_TLS_ROOTCERT_FILE" + (this.TlsClientRootCertPath ?? ""));
+            logger.Info("CORE_TLS_CLIENT_KEY_PATH" + (this.TlsClientKeyPath ?? ""));
+            logger.Info("CORE_TLS_CLIENT_CERT_PATH" + (this.TlsClientCertPath ?? ""));
         }
 
+        void InitializeLogging()
+        {
+            //TODO mpiva
+            //Since we use liblog, which is a log abstraction library. after the real logging library is
+            //decided, this can be coded.
+        }
+        void ValidateOptions()
+        {
+            if (this.Id == null)
+                throw new ArgumentException($"The chaincode id must be specified using either the -i or --i command line options or the {CORE_CHAINCODE_ID_NAME} environment variable.");
+            if (this.IsTlsEnabled)
+            {
+                if (TlsClientCertPath == null)
+                    throw new ArgumentException($"Client key certificate chain ({ENV_TLS_CLIENT_CERT_PATH}) was not specified.");
+                if (TlsClientKeyPath == null)
+                    throw new ArgumentException($"Client key ({ENV_TLS_CLIENT_KEY_PATH}) was not specified.");
+                if (TlsClientRootCertPath == null)
+                    throw new ArgumentException($"Peer certificate trust store ({CORE_PEER_TLS_ROOTCERT_FILE}) was not specified.");
+            }
+        }
         private void ProcessEnvironmentOptions()
         {
             string env = Environment.GetEnvironmentVariable(CORE_CHAINCODE_ID_NAME);
             if (!string.IsNullOrEmpty(env))
-                id = env;
+                Id = env;
             env = Environment.GetEnvironmentVariable(CORE_PEER_ADDRESS);
             if (!string.IsNullOrEmpty(env))
-                host = env;
+            {
+
+                string[] hostArr = env.Split(':');
+                if (hostArr.Length == 2)
+                {
+                    this.Port = int.Parse(hostArr[1].Trim());
+                    this.Host = hostArr[0].Trim();
+                }
+                else
+                {
+                    logger.Error($"peer address argument should be in host:port format, ignoring current {env}");
+                }
+            }
             env = Environment.GetEnvironmentVariable(CORE_PEER_TLS_ENABLED);
             if (!string.IsNullOrEmpty(env))
             {
-                tlsEnabled = bool.Parse(env);
-                env = Environment.GetEnvironmentVariable(CORE_PEER_TLS_SERVERHOSTOVERRIDE);
-                if (!string.IsNullOrEmpty(env))
-                    hostOverrideAuthority = env;
-                env = Environment.GetEnvironmentVariable(CORE_PEER_TLS_ROOTCERT_FILE);
-                if (!string.IsNullOrEmpty(env))
-                    rootCertFile = env;
+                IsTlsEnabled = bool.Parse(env);
+                if (IsTlsEnabled)
+                {
+                    this.TlsClientRootCertPath = Environment.GetEnvironmentVariable(CORE_PEER_TLS_ROOTCERT_FILE);
+                    this.TlsClientKeyPath = Environment.GetEnvironmentVariable(ENV_TLS_CLIENT_KEY_PATH);
+                    this.TlsClientCertPath = Environment.GetEnvironmentVariable(ENV_TLS_CLIENT_CERT_PATH);
+                }
             }
+            logger.Info("<<<<<<<<<<<<<Enviromental options>>>>>>>>>>>>");
+            logger.Info("CORE_CHAINCODE_ID_NAME: " + this.Id);
+            logger.Info("CORE_PEER_ADDRESS: " + this.Host);
+            logger.Info("CORE_PEER_TLS_ENABLED: " + this.IsTlsEnabled);
+            logger.Info("CORE_PEER_TLS_ROOTCERT_FILE" + (this.TlsClientRootCertPath ?? ""));
+            logger.Info("CORE_TLS_CLIENT_KEY_PATH" + (this.TlsClientKeyPath ?? ""));
+            logger.Info("CORE_TLS_CLIENT_CERT_PATH" + (this.TlsClientCertPath ?? ""));
         }
 
         /**
@@ -131,6 +174,8 @@ namespace Hyperledger.Fabric.Shim
         {
             ProcessEnvironmentOptions();
             ProcessCommandLineOptions(args);
+            InitializeLogging();
+            ValidateOptions();
             if (help)
             {
                 StringWriter wr = new StringWriter();
@@ -141,14 +186,14 @@ namespace Hyperledger.Fabric.Shim
                 return;
             }
 
-            if (id == null)
+            if (Id == null)
                 logger.Error($"The chaincode id must be specified using either the -i or --i command line options or the {CORE_CHAINCODE_ID_NAME} environment variable.");
-            Task.Factory.StartNew(() =>
+            Task.Factory.StartNew(async () =>
             {
                 logger.Trace("chaincode started");
                 Channel connection = NewPeerClientConnection();
                 logger.Trace("connection created");
-                ChatWithPeer(connection);
+                await ChatWithPeer(connection).ConfigureAwait(false);
                 logger.Trace("chatWithPeer DONE");
             });
         }
@@ -159,48 +204,69 @@ namespace Hyperledger.Fabric.Shim
             List<ChannelOption> ops = new List<ChannelOption>();
             logger.Info("Configuring channel connection to peer.");
             ChannelCredentials cred = ChannelCredentials.Insecure;
-            if (tlsEnabled)
+            if (IsTlsEnabled)
             {
-                logger.Info("TLS is enabled");
-                if (!File.Exists(rootCertFile))
+                if (!File.Exists(TlsClientRootCertPath))
                 {
-                    string msg = $"Root certificate not found at {rootCertFile}";
+                    string msg = $"Root certificate not found at {TlsClientRootCertPath}";
                     logger.Error(msg);
                     throw new ArgumentException(msg);
                 }
-
-                string rootcert = File.ReadAllText(rootCertFile);
-                cred = new SslCredentials(rootcert);
-                if (!string.IsNullOrEmpty(hostOverrideAuthority))
+                string rootcert = File.ReadAllText(TlsClientRootCertPath);
+                if (string.IsNullOrEmpty(TlsClientCertPath) || !File.Exists(TlsClientKeyPath))
                 {
-                    logger.Info("Host override " + hostOverrideAuthority);
-                    ops.Add(new ChannelOption("grpc.ssl_target_name_override", hostOverrideAuthority));
+                    if (!string.IsNullOrEmpty(TlsClientKeyPath))
+                    {
+                        string msg = $"Certificate not found";
+                        logger.Error(msg);
+                        throw new ArgumentException(msg);
+                    }
                 }
+                if (string.IsNullOrEmpty(TlsClientKeyPath) || !File.Exists(TlsClientCertPath))
+                {
+                    if (!string.IsNullOrEmpty(TlsClientCertPath))
+                    {
+                        string msg = $"Key not found";
+                        logger.Error(msg);
+                        throw new ArgumentException(msg);
+                    }
+                }
+
+                string clientcert = null;
+                string clientkey = null;
+                if (!string.IsNullOrEmpty(TlsClientKeyPath) && !string.IsNullOrEmpty(TlsClientCertPath))
+                {
+                    clientcert = File.ReadAllText(TlsClientCertPath);
+                    clientkey = File.ReadAllText(TlsClientKeyPath);
+                }
+                logger.Info("TLS is enabled");
+                cred = clientcert!=null ? new SslCredentials(rootcert, new KeyCertificatePair(clientcert, clientkey)) : new SslCredentials(rootcert);
             }
 
-            return new Channel(host, port, cred, ops);
+            return new Channel(Host, Port, cred, ops);
         }
 
-        public void ChatWithPeer(Channel connection)
+        public async Task ChatWithPeer(Channel connection)
         {
             // Establish stream with validating peer
             ChaincodeSupport.ChaincodeSupportClient stub = new ChaincodeSupport.ChaincodeSupportClient(connection);
-
             logger.Info("Connecting to peer.");
 
             AsyncDuplexStreamingCall<ChaincodeMessage, ChaincodeMessage> requestObserver = stub.Register();
-            Task.Run(async () =>
+#pragma warning disable 4014
+            Task.Factory.StartNew(async () =>
+#pragma warning restore 4014
             {
                 try
                 {
-                    while (await requestObserver.ResponseStream.MoveNext())
+                    while (await requestObserver.ResponseStream.MoveNext().ConfigureAwait(false))
                     {
                         ChaincodeMessage message = requestObserver.ResponseStream.Current;
                         logger.Debug("Got message from peer: " + message.ToJsonString());
                         try
                         {
                             logger.Debug($"[{message.Txid}]Received message {message.Type} from org.hyperledger.fabric.shim");
-                            handler.HandleMessage(message);
+                            handler.OnChaincodeMessage(message);
                         }
                         catch (Exception)
                         {
@@ -208,7 +274,7 @@ namespace Hyperledger.Fabric.Shim
                         }
                     }
 
-                    await connection.ShutdownAsync();
+                    await connection.ShutdownAsync().ConfigureAwait(false);
 
                 }
                 catch (Exception e)
@@ -221,38 +287,15 @@ namespace Hyperledger.Fabric.Shim
 
             // Create the org.hyperledger.fabric.shim handler responsible for all
             // control logic
-            handler = new Handler(requestObserver, this);
-
-            // Send the ChaincodeID during register.
-            ChaincodeID chaincodeID = new ChaincodeID {Name = id};
-            ChaincodeMessage payload = new ChaincodeMessage {Payload = chaincodeID.ToByteString(), Type = ChaincodeMessage.Types.Type.Register};
-            // Register on the stream
-            logger.Info($"Registering as '{id}' ... sending {ChaincodeMessage.Types.Type.Register}");
-            handler.SerialSend(payload);
-
+            handler = new Handler(new ChaincodeID { Name = Id }, this);
             while (true)
             {
                 try
                 {
-                    NextStateInfo nsInfo = handler.nextState.Take();
-                    ChaincodeMessage message = nsInfo.Message;
-                    handler.HandleMessage(message);
-                    // keepalive messages are PONGs to the fabric's PINGs
-                    if (nsInfo.SendToCC || message.Type == ChaincodeMessage.Types.Type.Keepalive)
-                    {
-                        if (message.Type == ChaincodeMessage.Types.Type.Keepalive)
-                        {
-                            logger.Info("Sending KEEPALIVE response");
-                        }
-                        else
-                        {
-                            logger.Info($"[{message.Txid},-8]Send state message {message.Type}");
-                        }
-
-                        handler.SerialSend(message);
-                    }
+                    ChaincodeMessage message = handler.NextOutboundChaincodeMessage();
+                    await requestObserver.RequestStream.WriteAsync(message).ConfigureAwait(false);
                 }
-                catch (Exception)
+                catch (Exception e)
                 {
                     break;
                 }

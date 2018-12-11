@@ -21,6 +21,7 @@ package queryresult;
 option go_package = "github.com/hyperledger/fabric/protos/ledger/queryresult";
 option java_package = "org.hyperledger.fabric.protos.ledger.queryresult";
 option csharp_namespace = "Hyperledger.Fabric.Protos.Ledger.QueryResult";
+
 import "google/protobuf/timestamp.proto";
 
 

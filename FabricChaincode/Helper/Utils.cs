@@ -37,7 +37,7 @@ namespace Hyperledger.Fabric.Shim.Helper
                 return $"{{ Type: {message.Type}, TxId: {message.Txid} }}";
             }
         }
-        public static T RunAndUnwarp<T>(this Task<T> func)
+        public static T RunAndUnwrap<T>(this Task<T> func)
         {
             try
             {
@@ -48,7 +48,7 @@ namespace Hyperledger.Fabric.Shim.Helper
                 throw e.Flatten().InnerExceptions.First();
             }
         }
-        public static void RunAndUnwarp(this Task func)
+        public static void RunAndUnwrap(this Task func)
         {
             try
             {
