@@ -69,5 +69,31 @@ namespace Hyperledger.Fabric.Shim.Tests.Implementation
                 Assert.AreEqual(km.IsDeleted, b);
             });
         }
+
+        [TestMethod]
+        public void TestHashCode()
+        {
+            Shim.Implementation.KeyModification km = new Shim.Implementation.KeyModification(new KeyModification {IsDelete = false});
+            
+            int expectedHashCode = 31;
+            expectedHashCode = expectedHashCode + 1237;
+            expectedHashCode = expectedHashCode * 31 + 0;
+            expectedHashCode = expectedHashCode * 31 + "".GetHashCode();
+            expectedHashCode = expectedHashCode * 31 + ByteString.CopyFromUtf8("").GetHashCode();
+            Assert.AreEqual(expectedHashCode, km.GetHashCode(), "Wrong hash code");
+
+        }
+
+        [TestMethod]
+        public void TestEquals()
+        {
+            Shim.Implementation.KeyModification km1 = new Shim.Implementation.KeyModification(new KeyModification { IsDelete = false});
+            Shim.Implementation.KeyModification km2 = new Shim.Implementation.KeyModification(new KeyModification { IsDelete = true });
+            Shim.Implementation.KeyModification km3 = new Shim.Implementation.KeyModification(new KeyModification { IsDelete = false });
+
+            Assert.IsFalse(km1.Equals(km2));
+            Assert.IsTrue(km1.Equals(km3));
+        }
+
     }
 }

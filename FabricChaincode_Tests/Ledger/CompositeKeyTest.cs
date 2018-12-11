@@ -23,12 +23,24 @@ namespace Hyperledger.Fabric.Shim.Tests.Ledger
     public class CompositeKeyTest
     {
         [TestMethod]
+        public void TestValidateSimpleKeys()
+        {
+            CompositeKey.ValidateSimpleKeys("abc", "def", "ghi");
+        }
+        [TestMethod]
+        [ExpectedException(typeof(CompositeKeyFormatException))]
+        public void TestValidateSimpleKeysException()
+        {
+            CompositeKey.ValidateSimpleKeys("\u0000abc");
+        }
+
+        [TestMethod]
         public void TestCompositeKeyStringStringArray()
         {
             CompositeKey key = new CompositeKey("abc", "def", "ghi", "jkl", "mno");
             Assert.AreEqual(key.ObjectType, "abc");
             Assert.AreEqual(key.Attributes.Count, 4);
-            Assert.AreEqual(key.ToString(), "abc\u0000def\u0000ghi\u0000jkl\u0000mno\u0000");
+            Assert.AreEqual(key.ToString(), "\u0000abc\u0000def\u0000ghi\u0000jkl\u0000mno\u0000");
         }
 
         [TestMethod]
@@ -37,9 +49,16 @@ namespace Hyperledger.Fabric.Shim.Tests.Ledger
             CompositeKey key = new CompositeKey("abc", new string[] {"def", "ghi", "jkl", "mno"});
             Assert.AreEqual(key.ObjectType, "abc");
             Assert.AreEqual(key.Attributes.Count, 4);
-            Assert.AreEqual(key.ToString(), "abc\u0000def\u0000ghi\u0000jkl\u0000mno\u0000");
+            Assert.AreEqual(key.ToString(), "\u0000abc\u0000def\u0000ghi\u0000jkl\u0000mno\u0000");
         }
-
+        [TestMethod]
+        public void TestEmptyAttributes()
+        {
+            CompositeKey key = new CompositeKey("abc");
+            Assert.AreEqual(key.ObjectType, "abc");
+            Assert.AreEqual(key.Attributes.Count, 0);
+            Assert.AreEqual(key.ToString(), "\u0000abc\u0000");
+        }
         [TestMethod]
         [ExpectedException(typeof(CompositeKeyFormatException))]
         public void TestCompositeKeyWithInvalidObjectTypeDelimiter()
@@ -88,17 +107,17 @@ namespace Hyperledger.Fabric.Shim.Tests.Ledger
         public void TestToString()
         {
             CompositeKey key = new CompositeKey("abc", new string[] {"def", "ghi", "jkl", "mno"});
-            Assert.AreEqual(key.ToString(), "abc\u0000def\u0000ghi\u0000jkl\u0000mno\u0000");
+            Assert.AreEqual(key.ToString(), "\u0000abc\u0000def\u0000ghi\u0000jkl\u0000mno\u0000");
         }
 
         [TestMethod]
         public void TestParseCompositeKey()
         {
-            CompositeKey key = CompositeKey.ParseCompositeKey("abc\u0000def\u0000ghi\u0000jkl\u0000mno\u0000");
+            CompositeKey key = CompositeKey.ParseCompositeKey("\u0000abc\u0000def\u0000ghi\u0000jkl\u0000mno\u0000");
             Assert.AreEqual(key.ObjectType, "abc");
             Assert.AreEqual(key.Attributes.Count, 4);
             CollectionAssert.AreEquivalent(key.Attributes, new [] {"def", "ghi", "jkl", "mno"});
-            Assert.AreEqual(key.ToString(), "abc\u0000def\u0000ghi\u0000jkl\u0000mno\u0000");
+            Assert.AreEqual(key.ToString(), "\u0000abc\u0000def\u0000ghi\u0000jkl\u0000mno\u0000");
         }
 
         [TestMethod]

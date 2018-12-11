@@ -12,6 +12,7 @@ using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using Google.Protobuf;
 using Hyperledger.Fabric.Protos.Peer;
+using Hyperledger.Fabric.Shim.Helper;
 using Hyperledger.Fabric.Shim.Logging;
 using Newtonsoft.Json;
 
@@ -24,9 +25,9 @@ namespace Hyperledger.Fabric.Shim.Implementation
         private readonly IChaincode chaincode;
 
 
-        private readonly Dictionary<string, bool> isTransaction;
+        private readonly Dictionary<string, bool> isTransaction=new Dictionary<string, bool>();
         private readonly BlockingCollection<ChaincodeMessage> outboundChaincodeMessages = new BlockingCollection<ChaincodeMessage>();
-        private readonly Dictionary<string, BlockingCollection<ChaincodeMessage>> responseChannel;
+        private readonly Dictionary<string, BlockingCollection<ChaincodeMessage>> responseChannel = new Dictionary<string, BlockingCollection<ChaincodeMessage>>();
 
         public Handler(ChaincodeID chaincodeId, IChaincode chaincode)
         {
@@ -51,7 +52,7 @@ namespace Hyperledger.Fabric.Shim.Implementation
 
         public void OnChaincodeMessage(ChaincodeMessage chaincodeMessage)
         {
-            logger.Trace($"[{chaincodeMessage.Txid,-8}s] {ToJsonString(chaincodeMessage)}");
+            logger.Trace($"[{chaincodeMessage.Txid,-8}s] {chaincodeMessage.ToJsonString()}");
             HandleChaincodeMessage(chaincodeMessage);
         }
 
@@ -418,18 +419,6 @@ namespace Hyperledger.Fabric.Shim.Implementation
             catch (Exception e)
             {
                 throw new InvalidOperationException(e.Message, e);
-            }
-        }
-
-        private static string ToJsonString(ChaincodeMessage message)
-        {
-            try
-            {
-                return JsonConvert.SerializeObject(message);
-            }
-            catch (InvalidProtocolBufferException e)
-            {
-                return $"{{ Type: {message.Type}, TxId: {message.Txid} }}";
             }
         }
 

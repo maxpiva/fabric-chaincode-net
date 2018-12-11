@@ -18,7 +18,6 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Threading.Tasks;
-using Google.Protobuf;
 using Grpc.Core;
 using Hyperledger.Fabric.Protos.Peer;
 using Hyperledger.Fabric.Shim.Helper;
@@ -45,12 +44,12 @@ namespace Hyperledger.Fabric.Shim
         private static readonly string ENV_TLS_CLIENT_CERT_PATH = "CORE_TLS_CLIENT_CERT_PATH";
 
         private Handler handler;
-        private OptionSet options;
         private bool help;
+        private OptionSet options;
 
-        public string Host { get; set; }= DEFAULT_HOST;
+        public string Host { get; set; } = DEFAULT_HOST;
         public string Id { get; set; }
-        public int Port { get; set; }= DEFAULT_PORT;
+        public int Port { get; set; } = DEFAULT_PORT;
 
         public bool IsTlsEnabled { get; set; }
         public string TlsClientKeyPath { get; set; }
@@ -68,11 +67,7 @@ namespace Hyperledger.Fabric.Shim
             try
             {
                 string peerAddress = null;
-                options = new OptionSet
-                {
-                    {"a|peerAddress|peer.address", "Address of peer to connect to", a => peerAddress = a},
-                    { "i|id", "Identity of chaincode", a => Id = a}
-                };
+                options = new OptionSet {{"a|peerAddress|peer.address", "Address of peer to connect to", a => peerAddress = a}, {"i|id", "Identity of chaincode", a => Id = a}, {"h|help|?", "Show help", a => help = a != null},};
                 options.Parse(args);
                 if (help)
                     return;
@@ -95,26 +90,28 @@ namespace Hyperledger.Fabric.Shim
             {
                 logger.Warn("cli parsing failed with exception", e);
             }
+
             logger.Info("<<<<<<<<<<<<<CommandLine options>>>>>>>>>>>>");
-            logger.Info("CORE_CHAINCODE_ID_NAME: " + this.Id);
-            logger.Info("CORE_PEER_ADDRESS: " + this.Host + ":" + this.Port);
-            logger.Info("CORE_PEER_TLS_ENABLED: " + this.IsTlsEnabled);
-            logger.Info("CORE_PEER_TLS_ROOTCERT_FILE" + (this.TlsClientRootCertPath ?? ""));
-            logger.Info("CORE_TLS_CLIENT_KEY_PATH" + (this.TlsClientKeyPath ?? ""));
-            logger.Info("CORE_TLS_CLIENT_CERT_PATH" + (this.TlsClientCertPath ?? ""));
+            logger.Info("CORE_CHAINCODE_ID_NAME: " + Id);
+            logger.Info("CORE_PEER_ADDRESS: " + Host + ":" + Port);
+            logger.Info("CORE_PEER_TLS_ENABLED: " + IsTlsEnabled);
+            logger.Info("CORE_PEER_TLS_ROOTCERT_FILE" + (TlsClientRootCertPath ?? ""));
+            logger.Info("CORE_TLS_CLIENT_KEY_PATH" + (TlsClientKeyPath ?? ""));
+            logger.Info("CORE_TLS_CLIENT_CERT_PATH" + (TlsClientCertPath ?? ""));
         }
 
-        void InitializeLogging()
+        private void InitializeLogging()
         {
             //TODO mpiva
             //Since we use liblog, which is a log abstraction library. after the real logging library is
             //decided, this can be coded.
         }
-        void ValidateOptions()
+
+        private void ValidateOptions()
         {
-            if (this.Id == null)
+            if (Id == null)
                 throw new ArgumentException($"The chaincode id must be specified using either the -i or --i command line options or the {CORE_CHAINCODE_ID_NAME} environment variable.");
-            if (this.IsTlsEnabled)
+            if (IsTlsEnabled)
             {
                 if (TlsClientCertPath == null)
                     throw new ArgumentException($"Client key certificate chain ({ENV_TLS_CLIENT_CERT_PATH}) was not specified.");
@@ -124,6 +121,7 @@ namespace Hyperledger.Fabric.Shim
                     throw new ArgumentException($"Peer certificate trust store ({CORE_PEER_TLS_ROOTCERT_FILE}) was not specified.");
             }
         }
+
         private void ProcessEnvironmentOptions()
         {
             string env = Environment.GetEnvironmentVariable(CORE_CHAINCODE_ID_NAME);
@@ -132,36 +130,37 @@ namespace Hyperledger.Fabric.Shim
             env = Environment.GetEnvironmentVariable(CORE_PEER_ADDRESS);
             if (!string.IsNullOrEmpty(env))
             {
-
                 string[] hostArr = env.Split(':');
                 if (hostArr.Length == 2)
                 {
-                    this.Port = int.Parse(hostArr[1].Trim());
-                    this.Host = hostArr[0].Trim();
+                    Port = int.Parse(hostArr[1].Trim());
+                    Host = hostArr[0].Trim();
                 }
                 else
                 {
                     logger.Error($"peer address argument should be in host:port format, ignoring current {env}");
                 }
             }
+
             env = Environment.GetEnvironmentVariable(CORE_PEER_TLS_ENABLED);
             if (!string.IsNullOrEmpty(env))
             {
                 IsTlsEnabled = bool.Parse(env);
                 if (IsTlsEnabled)
                 {
-                    this.TlsClientRootCertPath = Environment.GetEnvironmentVariable(CORE_PEER_TLS_ROOTCERT_FILE);
-                    this.TlsClientKeyPath = Environment.GetEnvironmentVariable(ENV_TLS_CLIENT_KEY_PATH);
-                    this.TlsClientCertPath = Environment.GetEnvironmentVariable(ENV_TLS_CLIENT_CERT_PATH);
+                    TlsClientRootCertPath = Environment.GetEnvironmentVariable(CORE_PEER_TLS_ROOTCERT_FILE);
+                    TlsClientKeyPath = Environment.GetEnvironmentVariable(ENV_TLS_CLIENT_KEY_PATH);
+                    TlsClientCertPath = Environment.GetEnvironmentVariable(ENV_TLS_CLIENT_CERT_PATH);
                 }
             }
+
             logger.Info("<<<<<<<<<<<<<Enviromental options>>>>>>>>>>>>");
-            logger.Info("CORE_CHAINCODE_ID_NAME: " + this.Id);
-            logger.Info("CORE_PEER_ADDRESS: " + this.Host);
-            logger.Info("CORE_PEER_TLS_ENABLED: " + this.IsTlsEnabled);
-            logger.Info("CORE_PEER_TLS_ROOTCERT_FILE" + (this.TlsClientRootCertPath ?? ""));
-            logger.Info("CORE_TLS_CLIENT_KEY_PATH" + (this.TlsClientKeyPath ?? ""));
-            logger.Info("CORE_TLS_CLIENT_CERT_PATH" + (this.TlsClientCertPath ?? ""));
+            logger.Info("CORE_CHAINCODE_ID_NAME: " + Id);
+            logger.Info("CORE_PEER_ADDRESS: " + Host);
+            logger.Info("CORE_PEER_TLS_ENABLED: " + IsTlsEnabled);
+            logger.Info("CORE_PEER_TLS_ROOTCERT_FILE" + (TlsClientRootCertPath ?? ""));
+            logger.Info("CORE_TLS_CLIENT_KEY_PATH" + (TlsClientKeyPath ?? ""));
+            logger.Info("CORE_TLS_CLIENT_CERT_PATH" + (TlsClientCertPath ?? ""));
         }
 
         /**
@@ -188,7 +187,7 @@ namespace Hyperledger.Fabric.Shim
 
             if (Id == null)
                 logger.Error($"The chaincode id must be specified using either the -i or --i command line options or the {CORE_CHAINCODE_ID_NAME} environment variable.");
-            Task.Factory.StartNew(async () =>
+            Task.Run(async () =>
             {
                 logger.Trace("chaincode started");
                 Channel connection = NewPeerClientConnection();
@@ -201,7 +200,7 @@ namespace Hyperledger.Fabric.Shim
 
         public Channel NewPeerClientConnection()
         {
-            List<ChannelOption> ops = new List<ChannelOption>();
+      
             logger.Info("Configuring channel connection to peer.");
             ChannelCredentials cred = ChannelCredentials.Insecure;
             if (IsTlsEnabled)
@@ -212,6 +211,7 @@ namespace Hyperledger.Fabric.Shim
                     logger.Error(msg);
                     throw new ArgumentException(msg);
                 }
+
                 string rootcert = File.ReadAllText(TlsClientRootCertPath);
                 if (string.IsNullOrEmpty(TlsClientCertPath) || !File.Exists(TlsClientKeyPath))
                 {
@@ -222,6 +222,7 @@ namespace Hyperledger.Fabric.Shim
                         throw new ArgumentException(msg);
                     }
                 }
+
                 if (string.IsNullOrEmpty(TlsClientKeyPath) || !File.Exists(TlsClientCertPath))
                 {
                     if (!string.IsNullOrEmpty(TlsClientCertPath))
@@ -239,11 +240,12 @@ namespace Hyperledger.Fabric.Shim
                     clientcert = File.ReadAllText(TlsClientCertPath);
                     clientkey = File.ReadAllText(TlsClientKeyPath);
                 }
+
                 logger.Info("TLS is enabled");
-                cred = clientcert!=null ? new SslCredentials(rootcert, new KeyCertificatePair(clientcert, clientkey)) : new SslCredentials(rootcert);
+                cred = clientcert != null ? new SslCredentials(rootcert, new KeyCertificatePair(clientcert, clientkey)) : new SslCredentials(rootcert);
             }
 
-            return new Channel(Host, Port, cred, ops);
+            return new Channel(Host, Port, cred);
         }
 
         public async Task ChatWithPeer(Channel connection)
@@ -254,7 +256,7 @@ namespace Hyperledger.Fabric.Shim
 
             AsyncDuplexStreamingCall<ChaincodeMessage, ChaincodeMessage> requestObserver = stub.Register();
 #pragma warning disable 4014
-            Task.Factory.StartNew(async () =>
+            Task.Run(async () =>
 #pragma warning restore 4014
             {
                 try
@@ -275,7 +277,6 @@ namespace Hyperledger.Fabric.Shim
                     }
 
                     await connection.ShutdownAsync().ConfigureAwait(false);
-
                 }
                 catch (Exception e)
                 {
@@ -287,7 +288,7 @@ namespace Hyperledger.Fabric.Shim
 
             // Create the org.hyperledger.fabric.shim handler responsible for all
             // control logic
-            handler = new Handler(new ChaincodeID { Name = Id }, this);
+            handler = new Handler(new ChaincodeID {Name = Id}, this);
             while (true)
             {
                 try
@@ -297,6 +298,7 @@ namespace Hyperledger.Fabric.Shim
                 }
                 catch (Exception e)
                 {
+                    logger.ErrorException(e.Message, e);
                     break;
                 }
             }
