@@ -3,7 +3,7 @@
 
 [![Build status](https://ci.appveyor.com/api/projects/status/72hk6ank8wc9m27o?svg=true)](https://ci.appveyor.com/project/maxpiva/fabric-chaincode-net)
 
-v1.3
+v1.3 WIP
 
 Direct .NET port from [fabric-chaincode-java](https://github.com/hyperledger/fabric-chaincode-java)
 

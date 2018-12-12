@@ -14,7 +14,11 @@ namespace Hyperledger.Fabric.Shim.Ledger
      *
      * @param <T>
      */
-    public interface IQueryResultsIterator<T> : IEnumerable<T>, IDisposable
+    public interface IAsyncQueryResultsEnumerable<T> : IAsyncEnumerable<T>, IDisposable
+    {
+        IQueryResultsEnumerable<T> ToSyncEnumerable();
+    }
+    public interface IQueryResultsEnumerable<T> : IEnumerable<T>, IDisposable
     {
     }
 }

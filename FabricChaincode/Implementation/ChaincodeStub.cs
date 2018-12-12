@@ -8,6 +8,8 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Security.Cryptography;
+using System.Threading;
+using System.Threading.Tasks;
 using Google.Protobuf;
 using Hyperledger.Fabric.Protos.Common;
 using Hyperledger.Fabric.Protos.Ledger.QueryResult;
@@ -20,7 +22,7 @@ namespace Hyperledger.Fabric.Shim.Implementation
 {
     public class ChaincodeStub : IChaincodeStub
     {
-        private static readonly string UNSPECIFIED_KEY = char.ConvertFromUtf32(1).ToString();
+        private static readonly string UNSPECIFIED_KEY = char.ConvertFromUtf32(1);
         public static readonly string MAX_UNICODE_RUNE = "\udbff\udfff";
 
 
@@ -78,44 +80,46 @@ namespace Hyperledger.Fabric.Shim.Implementation
             Event = payload != null ? new ChaincodeEvent {EventName = name, Payload = ByteString.CopyFrom(payload)} : new ChaincodeEvent {EventName = name};
         }
 
-        public virtual Response InvokeChaincode(string chaincodeName, List<byte[]> arguments)
+        public virtual Task<Response> InvokeChaincodeAsync(string chaincodeName, List<byte[]> arguments, CancellationToken token=default(CancellationToken))
         {
-            return InvokeChaincode(chaincodeName, arguments, null);
+            return InvokeChaincodeAsync(chaincodeName, arguments, null, token);
         }
 
-        public virtual Response InvokeChaincodeWithStringArgs(string chaincodeName, List<string> arguments, string channel)
+
+
+        public Task<Response> InvokeChaincodeWithStringArgsAsync(string chaincodeName, List<string> arguments, string channel, CancellationToken token = default(CancellationToken))
         {
-            return InvokeChaincode(chaincodeName, arguments.Select(a => a.ToBytes()).ToList(), channel);
+            return InvokeChaincodeAsync(chaincodeName, arguments.Select(a => a.ToBytes()).ToList(), channel, token);
         }
 
-        public Response InvokeChaincodeWithStringArgs(string chaincodeName, List<string> arguments)
+        public Task<Response> InvokeChaincodeWithStringArgsAsync(string chaincodeName, List<string> arguments, CancellationToken token = default(CancellationToken))
         {
-            return InvokeChaincodeWithStringArgs(chaincodeName, arguments, null);
+            return InvokeChaincodeWithStringArgsAsync(chaincodeName, arguments, null, token);
         }
 
-        public Response InvokeChaincodeWithStringArgs(string chaincodeName, params string[] arguments)
+        public Task<Response> InvokeChaincodeWithStringArgsAsync(string chaincodeName, CancellationToken token = default(CancellationToken), params string[] arguments)
         {
-            return InvokeChaincodeWithStringArgs(chaincodeName, arguments.ToList(), null);
+            return InvokeChaincodeWithStringArgsAsync(chaincodeName, arguments.ToList(), null,token);
         }
 
-        public string GetStringState(string key)
+
+        public async Task<string> GetStringStateAsync(string key, CancellationToken token) => (await handler.GetStateAsync(ChannelId,TxId,"",key,token)).ToStringUtf8();
+
+        public Task PutPrivateDataAsync(string collection, string key, string value, CancellationToken token=default(CancellationToken))
         {
-            return GetState(key).ToUTF8String();
+            return PutPrivateDataAsync(collection,key, value.ToBytes(), token);
         }
 
-        public void PutPrivateData(string collection, string key, string value)
-        {
-            PutPrivateData(collection,key, value.ToBytes());
-        }
 
-        public string GetPrivateDataUTF8(string collection, string key)
+        public async Task<string> GetPrivateDataUTF8Async(string collection, string key, CancellationToken token = default(CancellationToken))
         {
-            return GetPrivateData(collection, key).ToUTF8String();
+            return (await GetPrivateDataAsync(collection, key, token)).ToUTF8String();
         }
+        
 
-        public void PutStringState(string key, string value)
+        public Task PutStringStateAsync(string key, string value, CancellationToken token = default(CancellationToken))
         {
-            PutState(key, value.ToBytes());
+            return PutStateAsync(key, value.ToBytes(), token);
         }
 
 
@@ -125,69 +129,36 @@ namespace Hyperledger.Fabric.Shim.Implementation
 
         public string TxId { get; }
 
-        public byte[] GetState(string key) => handler.GetState(ChannelId, TxId,"", key).ToByteArray();
+
+        public async Task<byte[]> GetStateAsync(string key, CancellationToken token=default(CancellationToken)) => (await handler.GetStateAsync(ChannelId, TxId, "", key,token)).ToByteArray();
 
 
-        public void PutState(string key, byte[] value)
+        public Task PutStateAsync(string key, byte[] value, CancellationToken token = default(CancellationToken))
         {
             ValidateKey(key);
-            handler.PutState(ChannelId, TxId,"", key, ByteString.CopyFrom(value));
+            return handler.PutStateAsync(ChannelId, TxId,"", key, ByteString.CopyFrom(value), token);
         }
 
 
-        public void DelState(string key)
+        public Task DelStateAsync(string key, CancellationToken token = default(CancellationToken))
         {
-            handler.DeleteState(ChannelId, TxId,"", key);
+            return handler.DeleteStateAsync(ChannelId, TxId,"", key, token);
         }
 
-        IQueryResultsIterator<IKeyValue> IChaincodeStub.GetStateByRange(string startKey, string endKey)
-        {
-            return GetStateByRange(startKey, endKey);
-        }
-
-        IQueryResultsIterator<IKeyValue> IChaincodeStub.GetStateByPartialCompositeKey(string compositeKey)
-        {
-            return GetStateByPartialCompositeKey(compositeKey);
-        }
-
-        CompositeKey IChaincodeStub.CreateCompositeKey(string objectType, params string[] attributes)
-        {
-            return CreateCompositeKey(objectType, attributes);
-        }
-
-        CompositeKey IChaincodeStub.SplitCompositeKey(string compositeKey)
-        {
-            return SplitCompositeKey(compositeKey);
-        }
-
-        IQueryResultsIterator<IKeyValue> IChaincodeStub.GetQueryResult(string query)
-        {
-            return GetQueryResult(query);
-        }
-
-        public Response InvokeChaincode(string chaincodeName, List<byte[]> arguments, string channel)
+        public Task<Response> InvokeChaincodeAsync(string chaincodeName, List<byte[]> arguments, string channel, CancellationToken token=default(CancellationToken))
         {
             // internally we handle chaincode name as a composite name
-            string compositeName;
-            if (channel != null && channel.Trim().Length > 0)
-            {
-                compositeName = chaincodeName + "/" + channel;
-            }
-            else
-            {
-                compositeName = chaincodeName;
-            }
-
-            return handler.InvokeChaincode(ChannelId, TxId, compositeName, arguments);
+            string compositeName = channel != null && channel.Trim().Length > 0 ? chaincodeName + "/" + channel : chaincodeName;
+            return handler.InvokeChaincodeAsync(ChannelId, TxId, compositeName, arguments, token);
         }
 
-        public IQueryResultsIterator<IKeyValue> GetStateByPartialCompositeKey(string objectType, params string[] attributes)
+        public IAsyncQueryResultsEnumerable<IKeyValue> GetStateByPartialCompositeKeyAsync(string objectType, params string[] attributes)
         {
-            return GetStateByPartialCompositeKey(new CompositeKey(objectType, attributes));
+            return GetStateByPartialCompositeKeyAsync(new CompositeKey(objectType, attributes));
         }
 
 
-        public IQueryResultsIterator<IKeyValue> GetStateByPartialCompositeKey(CompositeKey compositeKey)
+        public IAsyncQueryResultsEnumerable<IKeyValue> GetStateByPartialCompositeKeyAsync(CompositeKey compositeKey)
         {
             if (compositeKey == null)
                 compositeKey = new CompositeKey(UNSPECIFIED_KEY);
@@ -197,28 +168,28 @@ namespace Hyperledger.Fabric.Shim.Implementation
         }
 
 
-        public virtual byte[] GetPrivateData(string collection, string key)
+        public virtual async Task<byte[]> GetPrivateDataAsync(string collection, string key, CancellationToken token=default(CancellationToken))
         {
             ValidateCollection(collection);
-            return handler.GetState(ChannelId, TxId, collection, key).ToByteArray();
+            return (await handler.GetStateAsync(ChannelId, TxId, collection, key,token)).ToByteArray();
         }
 
 
-        public void PutPrivateData(string collection, string key, byte[] value)
+        public Task PutPrivateDataAsync(string collection, string key, byte[] value, CancellationToken token=default(CancellationToken))
         {
             ValidateKey(key);
             ValidateCollection(collection);
-            handler.PutState(ChannelId, TxId, collection, key, ByteString.CopyFrom(value));
+            return handler.PutStateAsync(ChannelId, TxId, collection, key, ByteString.CopyFrom(value), token);
         }
 
 
-        public void DelPrivateData(string collection, string key)
+        public Task DelPrivateDataAsync(string collection, string key, CancellationToken token = default(CancellationToken))
         {
             ValidateCollection(collection);
-            handler.DeleteState(ChannelId, TxId, collection, key);
+            return handler.DeleteStateAsync(ChannelId, TxId, collection, key, token);
         }
 
-        public IQueryResultsIterator<IKeyValue> GetPrivateDataByRange(string collection, string startKey, string endKey)
+        public IAsyncQueryResultsEnumerable<IKeyValue> GetPrivateDataByRangeAsync(string collection, string startKey, string endKey)
         {
             ValidateCollection(collection);
             if (string.IsNullOrEmpty(startKey))
@@ -230,17 +201,17 @@ namespace Hyperledger.Fabric.Shim.Implementation
             return ExecuteGetStateByRange(collection, startKey, endKey);
         }
 
-        public IQueryResultsIterator<IKeyValue> GetPrivateDataByPartialCompositeKey(string collection, string compositeKey)
+        public IAsyncQueryResultsEnumerable<IKeyValue> GetPrivateDataByPartialCompositeKeyAsync(string collection, string compositeKey)
         {
             if (compositeKey == null)
                 compositeKey = "";
 
             CompositeKey key = compositeKey.StartsWith(CompositeKey.NAMESPACE) ? CompositeKey.ParseCompositeKey(compositeKey) : new CompositeKey(compositeKey);
 
-            return GetPrivateDataByPartialCompositeKey(collection, key);
+            return GetPrivateDataByPartialCompositeKeyAsync(collection, key);
         }
 
-        public IQueryResultsIterator<IKeyValue> GetPrivateDataByPartialCompositeKey(string collection, CompositeKey compositeKey)
+        public IAsyncQueryResultsEnumerable<IKeyValue> GetPrivateDataByPartialCompositeKeyAsync(string collection, CompositeKey compositeKey)
         {
             if (compositeKey == null)
                 compositeKey = new CompositeKey(UNSPECIFIED_KEY);
@@ -250,20 +221,24 @@ namespace Hyperledger.Fabric.Shim.Implementation
             return ExecuteGetStateByRange(collection, cKeyAsString, cKeyAsString + MAX_UNICODE_RUNE);
         }
 
-        public IQueryResultsIterator<IKeyValue> GetPrivateDataByPartialCompositeKey(string collection, string objectType, params string[] attributes)
+        public IAsyncQueryResultsEnumerable<IKeyValue> GetPrivateDataByPartialCompositeKeyAsync(string collection, string objectType, params string[] attributes)
         {
-            return GetPrivateDataByPartialCompositeKey(collection, new CompositeKey(objectType, attributes));
+            return GetPrivateDataByPartialCompositeKeyAsync(collection, new CompositeKey(objectType, attributes));
         }
 
-        public virtual IQueryResultsIterator<IKeyValue> GetPrivateDataQueryResult(string collection, string query)
+        public virtual IAsyncQueryResultsEnumerable<IKeyValue> GetPrivateDataQueryResultAsync(string collection, string query)
         {
             ValidateCollection(collection);
-            return new QueryResultsIterator<IKeyValue>(handler, ChannelId, TxId, handler.GetQueryResult(ChannelId, TxId, collection, query), (qv) => new KeyValue(KV.Parser.ParseFrom(qv.ResultBytes)));
+            return new AsyncQueryResultsEnumerable<IKeyValue>(handler, ChannelId, TxId, 
+                token=>handler.GetQueryResultAsync(ChannelId, TxId, collection, query,token),
+                (qv) => new KeyValue(KV.Parser.ParseFrom(qv.ResultBytes)));
         }
 
-        public IQueryResultsIterator<IKeyModification> GetHistoryForKey(string key)
+        public IAsyncQueryResultsEnumerable<IKeyModification> GetHistoryForKeyAsync(string key)
         {
-            return new QueryResultsIterator<IKeyModification>(handler, ChannelId, TxId, handler.GetHistoryForKey(ChannelId, TxId, key), (qv) => new KeyModification(Protos.Ledger.QueryResult.KeyModification.Parser.ParseFrom(qv.ResultBytes)));
+            return new AsyncQueryResultsEnumerable<IKeyModification>(handler, ChannelId, TxId, 
+                token=>handler.GetHistoryForKeyAsync(ChannelId, TxId, key,token),
+                (qv) => new KeyModification(Protos.Ledger.QueryResult.KeyModification.Parser.ParseFrom(qv.ResultBytes)));
         }
 
         private byte[] ComputeBinding(ChannelHeader channelHeader, SignatureHeader signatureHeader)
@@ -294,7 +269,7 @@ namespace Hyperledger.Fabric.Shim.Implementation
         }
 
 
-        public IQueryResultsIterator<IKeyValue> GetStateByRange(string startKey, string endKey)
+        public IAsyncQueryResultsEnumerable<IKeyValue> GetStateByRangeAsync(string startKey, string endKey)
         {
             if (string.IsNullOrEmpty(startKey))
                 startKey = UNSPECIFIED_KEY;
@@ -304,16 +279,18 @@ namespace Hyperledger.Fabric.Shim.Implementation
             return ExecuteGetStateByRange("", startKey, endKey);
         }
 
-        private IQueryResultsIterator<IKeyValue> ExecuteGetStateByRange(string collection, string startKey, string endKey)
+        private IAsyncQueryResultsEnumerable<IKeyValue> ExecuteGetStateByRange(string collection, string startKey, string endKey)
         {
-            return new QueryResultsIterator<IKeyValue>(handler, ChannelId, TxId, handler.GetStateByRange(ChannelId, TxId, collection, startKey, endKey), (qv) => new KeyValue(KV.Parser.ParseFrom(qv.ResultBytes)));
+            return new AsyncQueryResultsEnumerable<IKeyValue>(handler, ChannelId, TxId,
+                (token)=>handler.GetStateByRangeAsync(ChannelId, TxId, collection, startKey, endKey,token),
+                (qv) => new KeyValue(KV.Parser.ParseFrom(qv.ResultBytes)));
         }
 
 
-        public IQueryResultsIterator<IKeyValue> GetStateByPartialCompositeKey(string compositeKey)
+        public IAsyncQueryResultsEnumerable<IKeyValue> GetStateByPartialCompositeKeyAsync(string compositeKey)
         {
             CompositeKey key = compositeKey.StartsWith(CompositeKey.NAMESPACE) ? CompositeKey.ParseCompositeKey(compositeKey) : new CompositeKey(compositeKey);
-            return GetStateByPartialCompositeKey(key);
+            return GetStateByPartialCompositeKeyAsync(key);
         }
 
 
@@ -329,11 +306,14 @@ namespace Hyperledger.Fabric.Shim.Implementation
         }
 
 
-        public IQueryResultsIterator<IKeyValue> GetQueryResult(string query)
+        public IAsyncQueryResultsEnumerable<IKeyValue> GetQueryResultAsync(string query)
         {
-            return new QueryResultsIterator<IKeyValue>(handler, ChannelId, TxId, handler.GetQueryResult(ChannelId, TxId,"", query), (qv) => new KeyValue(KV.Parser.ParseFrom(qv.ResultBytes)));
+            return new AsyncQueryResultsEnumerable<IKeyValue>(handler, ChannelId, TxId, 
+                token=>handler.GetQueryResultAsync(ChannelId, TxId,"", query,token),
+                (qv) => new KeyValue(KV.Parser.ParseFrom(qv.ResultBytes)));
         }
 
+        // ReSharper disable once ParameterOnlyUsedForPreconditionCheck.Local
         private void ValidateKey(string key)
         {
             if (key == null)
@@ -342,6 +322,7 @@ namespace Hyperledger.Fabric.Shim.Implementation
                 throw new ArgumentException("key cannot not be an empty string");
         }
 
+        // ReSharper disable once ParameterOnlyUsedForPreconditionCheck.Local
         private void ValidateCollection(string collection)
         {
             if (collection == null)

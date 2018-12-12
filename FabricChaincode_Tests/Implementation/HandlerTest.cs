@@ -5,8 +5,10 @@ SPDX-License-Identifier: Apache-2.0
 */
 
 using System;
+using System.Threading;
 using Google.Protobuf;
 using Hyperledger.Fabric.Protos.Peer;
+using Hyperledger.Fabric.Shim.Helper;
 using Hyperledger.Fabric.Shim.Implementation;
 using Hyperledger.Fabric.Shim.Tests.Chaincode;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
@@ -19,43 +21,45 @@ namespace Hyperledger.Fabric.Shim.Tests.Implementation
         [TestMethod]
         public void TestHandlerStates()
         {
+            CancellationToken token = default(CancellationToken);
+
             ChaincodeBase cb = new EmptyChaincode();
 
             ChaincodeID chaincodeId = new ChaincodeID {Name = "mycc"};
-            Handler handler = new Handler(chaincodeId, cb);
+            Handler handler = Handler.Create(chaincodeId, cb);
 
             ChaincodeMessage msgReg = new ChaincodeMessage {Type = ChaincodeMessage.Types.Type.Register};
             // Correct message
-            handler.OnChaincodeMessage(msgReg);
+            handler.OnChaincodeMessageAsync(msgReg,token).RunAndUnwrap();
             Assert.AreEqual(CCState.ESTABLISHED, handler.State, "Not correct handler state");
 
             ChaincodeMessage msgReady = new ChaincodeMessage {Type = ChaincodeMessage.Types.Type.Ready};
             // Correct message
-            handler.OnChaincodeMessage(msgReady);
+            handler.OnChaincodeMessageAsync(msgReady, token).RunAndUnwrap();
             Assert.AreEqual(CCState.READY, handler.State, "Not correct handler state");
 
-            handler = new Handler(chaincodeId, cb);
+            handler = Handler.Create(chaincodeId, cb);
             // Incorrect message
-            handler.OnChaincodeMessage(msgReady);
+            handler.OnChaincodeMessageAsync(msgReady, token).RunAndUnwrap();
             Assert.AreEqual(CCState.CREATED, handler.State, "Not correct handler state");
             // Correct message
-            handler.OnChaincodeMessage(msgReg);
+            handler.OnChaincodeMessageAsync(msgReg, token).RunAndUnwrap();
             Assert.AreEqual(CCState.ESTABLISHED, handler.State, "Not correct handler state");
             // Incorrect message
-            handler.OnChaincodeMessage(msgReg);
+            handler.OnChaincodeMessageAsync(msgReg, token).RunAndUnwrap();
             Assert.AreEqual(CCState.ESTABLISHED, handler.State, "Not correct handler state");
-            handler.OnChaincodeMessage(msgReady);
+            handler.OnChaincodeMessageAsync(msgReady, token).RunAndUnwrap();
             Assert.AreEqual(CCState.READY, handler.State, "Not correct handler state");
 
             // Unrelated message, do nothing
             ChaincodeMessage unkonwnMessage = new ChaincodeMessage {Type = ChaincodeMessage.Types.Type.PutState, ChannelId = "mychannel", Txid = "q", Payload = ByteString.CopyFromUtf8("")};
 
-            handler.OnChaincodeMessage(unkonwnMessage);
+            handler.OnChaincodeMessageAsync(unkonwnMessage, token).RunAndUnwrap();
             Assert.AreEqual(CCState.READY, handler.State, "Not correct handler state");
 
             // KEEPALIVE message, do nothing
             ChaincodeMessage keepAliveMessage = new ChaincodeMessage {Type = ChaincodeMessage.Types.Type.Keepalive, ChannelId = "mychannel", Txid = "q", Payload = ByteString.CopyFromUtf8("")};
-            handler.OnChaincodeMessage(keepAliveMessage);
+            handler.OnChaincodeMessageAsync(keepAliveMessage, token).RunAndUnwrap();
             Assert.AreEqual(CCState.READY, handler.State, "Not correct handler state");
 
             ChaincodeMessage errorMsg = new ChaincodeMessage {Type = ChaincodeMessage.Types.Type.Error, ChannelId = "mychannel", Txid = "q", Payload = ByteString.CopyFromUtf8("")};
@@ -63,7 +67,7 @@ namespace Hyperledger.Fabric.Shim.Tests.Implementation
             // Error message, except exception, no open communication
             try
             {
-                handler.OnChaincodeMessage(errorMsg);
+                handler.OnChaincodeMessageAsync(errorMsg, token).RunAndUnwrap();
                 Assert.Fail("Expecting InvalidOperationException");
             }
             catch (InvalidOperationException)

@@ -15,8 +15,8 @@ limitations under the License.
 */
 
 using System;
-using System.Collections.Generic;
 using System.IO;
+using System.Threading;
 using System.Threading.Tasks;
 using Grpc.Core;
 using Hyperledger.Fabric.Protos.Peer;
@@ -169,35 +169,61 @@ namespace Hyperledger.Fabric.Shim
 	 * @param args
 	 *            command line arguments
 	 */
-        public void Start(string[] args)
+        private CancellationTokenSource exitSource;
+        public void Start(string[] args, CancellationTokenSource ts=null)
         {
-            ProcessEnvironmentOptions();
-            ProcessCommandLineOptions(args);
-            InitializeLogging();
-            ValidateOptions();
-            if (help)
+            if (ts == null)
             {
-                StringWriter wr = new StringWriter();
-                options.WriteOptionDescriptions(wr);
-                logger.Info("Usage chaincode [OPTIONS]");
-                logger.Info("Options:");
-                logger.Info(wr.ToString());
-                return;
+                exitSource = new CancellationTokenSource();
+                AppDomain.CurrentDomain.ProcessExit += ProcessExit;
             }
+            else
+                exitSource = ts;
 
-            if (Id == null)
-                logger.Error($"The chaincode id must be specified using either the -i or --i command line options or the {CORE_CHAINCODE_ID_NAME} environment variable.");
-            Task.Run(async () =>
+            try
             {
-                logger.Trace("chaincode started");
-                Channel connection = NewPeerClientConnection();
-                logger.Trace("connection created");
-                await ChatWithPeer(connection).ConfigureAwait(false);
-                logger.Trace("chatWithPeer DONE");
-            });
+                ProcessEnvironmentOptions();
+                ProcessCommandLineOptions(args);
+                InitializeLogging();
+                ValidateOptions();
+                if (help)
+                {
+                    StringWriter wr = new StringWriter();
+                    options.WriteOptionDescriptions(wr);
+                    logger.Info("Usage chaincode [OPTIONS]");
+                    logger.Info("Options:");
+                    logger.Info(wr.ToString());
+                    return;
+                }
+
+                if (Id == null)
+                    logger.Error($"The chaincode id must be specified using either the -i or --i command line options or the {CORE_CHAINCODE_ID_NAME} environment variable.");
+                Task.Run(async () =>
+                {
+                    logger.Trace("chaincode started");
+                    Channel connection = NewPeerClientConnection();
+                    logger.Trace("connection created");
+                    await ChatWithPeer(connection,exitSource.Token).ConfigureAwait(false);
+                    logger.Trace("chatWithPeer DONE");
+                }, exitSource.Token);
+            }
+            catch (Exception e)
+            {
+                logger.Error(e.Message, e);
+            }
+            finally
+            {
+                if (ts == null)
+                    AppDomain.CurrentDomain.ProcessExit -= ProcessExit;
+            }
+            
         }
 
-
+        public void ProcessExit(object ob, EventArgs args)
+        {
+            logger.Info("ProcessExit!");
+            exitSource.Cancel();
+        }
         public Channel NewPeerClientConnection()
         {
       
@@ -248,7 +274,7 @@ namespace Hyperledger.Fabric.Shim
             return new Channel(Host, Port, cred);
         }
 
-        public async Task ChatWithPeer(Channel connection)
+        public async Task ChatWithPeer(Channel connection, CancellationToken token=default(CancellationToken))
         {
             // Establish stream with validating peer
             ChaincodeSupport.ChaincodeSupportClient stub = new ChaincodeSupport.ChaincodeSupportClient(connection);
@@ -261,14 +287,14 @@ namespace Hyperledger.Fabric.Shim
             {
                 try
                 {
-                    while (await requestObserver.ResponseStream.MoveNext().ConfigureAwait(false))
+                    while (await requestObserver.ResponseStream.MoveNext(token).ConfigureAwait(false))
                     {
                         ChaincodeMessage message = requestObserver.ResponseStream.Current;
                         logger.Debug("Got message from peer: " + message.ToJsonString());
                         try
                         {
                             logger.Debug($"[{message.Txid}]Received message {message.Type} from org.hyperledger.fabric.shim");
-                            handler.OnChaincodeMessage(message);
+                            await handler.OnChaincodeMessageAsync(message,token).ConfigureAwait(false);
                         }
                         catch (Exception)
                         {
@@ -288,12 +314,12 @@ namespace Hyperledger.Fabric.Shim
 
             // Create the org.hyperledger.fabric.shim handler responsible for all
             // control logic
-            handler = new Handler(new ChaincodeID {Name = Id}, this);
+            handler = await Handler.CreateAsync(new ChaincodeID {Name = Id}, this,token).ConfigureAwait(false);
             while (true)
             {
                 try
                 {
-                    ChaincodeMessage message = handler.NextOutboundChaincodeMessage();
+                    ChaincodeMessage message = await handler.NextOutboundChaincodeMessageAsync(token).ConfigureAwait(false);
                     await requestObserver.RequestStream.WriteAsync(message).ConfigureAwait(false);
                 }
                 catch (Exception e)

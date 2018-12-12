@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>netcoreapp2.0</TargetFramework>
@@ -10,8 +10,30 @@
     <RootNamespace>Hyperledger.Fabric.Shim.Tests</RootNamespace>
   </PropertyGroup>
 
+  <ItemGroup>
+    <Compile Remove="Mock\Peer\ChaincodeMockPeer.cs" />
+    <Compile Remove="Mock\Peer\CompleteStep.cs" />
+    <Compile Remove="Mock\Peer\DelValueStep.cs" />
+    <Compile Remove="Mock\Peer\ErrorResponseStep.cs" />
+    <Compile Remove="Mock\Peer\GetHistoryForKeyStep.cs" />
+    <Compile Remove="Mock\Peer\GetQueryResultStep.cs" />
+    <Compile Remove="Mock\Peer\GetStateByRangeStep.cs" />
+    <Compile Remove="Mock\Peer\GetValueStep.cs" />
+    <Compile Remove="Mock\Peer\InvokeChaincodeStep.cs" />
+    <Compile Remove="Mock\Peer\PutValueStep.cs" />
+    <Compile Remove="Mock\Peer\QueryCloseStep.cs" />
+    <Compile Remove="Mock\Peer\QueryNextStep.cs" />
+    <Compile Remove="Mock\Peer\QueryResultStep.cs" />
+    <Compile Remove="Mock\Peer\RegisterStep.cs" />
+    <Compile Remove="Mock\Peer\ScenarioStep.cs" />
+  </ItemGroup>
+
 
   <ItemGroup>
+    <PackageReference Include="LibLog" Version="5.0.3">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
+    </PackageReference>
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="15.9.0" />
     <PackageReference Include="Moq" Version="4.10.1" />
     <PackageReference Include="MSTest.TestAdapter" Version="1.4.0" />
@@ -20,6 +42,10 @@
 
   <ItemGroup>
     <ProjectReference Include="..\FabricChaincode\FabricChaincode.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Folder Include="Mock\Peer\" />
   </ItemGroup>
 
 </Project>

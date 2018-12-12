@@ -6,6 +6,8 @@ SPDX-License-Identifier: Apache-2.0
 
 using System;
 using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
 using Hyperledger.Fabric.Protos.Peer;
 using Hyperledger.Fabric.Protos.Peer.ProposalPackage;
 using Hyperledger.Fabric.Shim.Ledger;
@@ -110,8 +112,8 @@ namespace Hyperledger.Fabric.Shim
          * @param channel       If not specified, the caller's channel is assumed.
          * @return {@link Response} object returned by called chaincode
          */
-        Response InvokeChaincode(string chaincodeName, List<byte[]> arguments, string channel);
-
+        
+        Task<Response> InvokeChaincodeAsync(string chaincodeName, List<byte[]> arguments, string channel, CancellationToken token = default(CancellationToken));
         /**
          * Returns the value of the specified <code>key</code> from the ledger.
          * <p>
@@ -121,7 +123,7 @@ namespace Hyperledger.Fabric.Shim
          * @param key name of the value
          * @return value the value read from the ledger
          */
-        byte[] GetState(string key);
+        Task<byte[]> GetStateAsync(string key, CancellationToken token=default(CancellationToken));
 
         /**
          * Puts the specified <code>key</code> and <code>value</code> into the transaction's
@@ -136,7 +138,7 @@ namespace Hyperledger.Fabric.Shim
          * @param key   name of the value
          * @param value the value to write to the ledger
          */
-        void PutState(string key, byte[] value);
+        Task PutStateAsync(string key, byte[] value, CancellationToken token = default(CancellationToken));
 
         /**
          * Records the specified <code>key</code> to be deleted in the writeset of
@@ -147,7 +149,7 @@ namespace Hyperledger.Fabric.Shim
          *
          * @param key name of the value to be deleted
          */
-        void DelState(string key);
+        Task DelStateAsync(string key, CancellationToken token = default(CancellationToken));
 
         /**
          * Returns all existing keys, and their values, that are lexicographically
@@ -164,7 +166,7 @@ namespace Hyperledger.Fabric.Shim
          * @param endKey   key as the end of the key range (exclusive)
          * @return an {@link Iterable} of {@link KeyValue}
          */
-        IQueryResultsIterator<IKeyValue> GetStateByRange(string startKey, string endKey);
+        IAsyncQueryResultsEnumerable<IKeyValue> GetStateByRangeAsync(string startKey, string endKey);
 
         /**
          * Returns all existing keys, and their values, that are prefixed by the
@@ -184,7 +186,7 @@ namespace Hyperledger.Fabric.Shim
          * @param compositeKey partial composite key
          * @return an {@link Iterable} of {@link KeyValue}
          */
-        IQueryResultsIterator<IKeyValue> GetStateByPartialCompositeKey(string compositeKey);
+        IAsyncQueryResultsEnumerable<IKeyValue> GetStateByPartialCompositeKeyAsync(string compositeKey);
 
         /**
          * Returns all existing keys, and their values, that are prefixed by the
@@ -205,7 +207,7 @@ namespace Hyperledger.Fabric.Shim
          * @param attributes: Attributes of the composite key
          * @return an {@link Iterable} of {@link KeyValue}
          */
-        IQueryResultsIterator<IKeyValue> GetStateByPartialCompositeKey(string objectType, params string[] attributes);
+        IAsyncQueryResultsEnumerable<IKeyValue> GetStateByPartialCompositeKeyAsync(string objectType, params string[] attributes);
 
         /**
          * Returns all existing keys, and their values, that are prefixed by the
@@ -217,7 +219,7 @@ namespace Hyperledger.Fabric.Shim
          * @param compositeKey partial composite key
          * @return an {@link Iterable} of {@link KeyValue}
          */
-        IQueryResultsIterator<IKeyValue> GetStateByPartialCompositeKey(CompositeKey compositeKey);
+        IAsyncQueryResultsEnumerable<IKeyValue> GetStateByPartialCompositeKeyAsync(CompositeKey compositeKey);
 
         /**
          * Given a set of attributes, this method combines these attributes to
@@ -252,7 +254,7 @@ namespace Hyperledger.Fabric.Shim
          * @throws UnsupportedOperationException if the underlying state database does not support rich
          *                                       queries.
          */
-        IQueryResultsIterator<IKeyValue> GetQueryResult(string query);
+        IAsyncQueryResultsEnumerable<IKeyValue> GetQueryResultAsync(string query);
 
         /**
          * Returns a history of key values across time.
@@ -266,7 +268,7 @@ namespace Hyperledger.Fabric.Shim
          * @param key The state variable key
          * @return an {@link Iterable} of {@link KeyModification}
          */
-        IQueryResultsIterator<IKeyModification> GetHistoryForKey(string key);
+        IAsyncQueryResultsEnumerable<IKeyModification> GetHistoryForKeyAsync(string key);
 
         /**
          * Returns the value of the specified <code>key</code> from the specified
@@ -280,7 +282,7 @@ namespace Hyperledger.Fabric.Shim
          * @param key        name of the value
          * @return value the value read from the collection
          */
-        byte[] GetPrivateData(string collection, string key);
+        Task<byte[]> GetPrivateDataAsync(string collection, string key, CancellationToken token = default(CancellationToken));
 
         /**
          * Puts the specified <code>key</code> and <code>value</code> into the transaction's
@@ -299,7 +301,7 @@ namespace Hyperledger.Fabric.Shim
          * @param key        name of the value
          * @param value      the value to write to the ledger
          */
-        void PutPrivateData(string collection, string key, byte[] value);
+        Task PutPrivateDataAsync(string collection, string key, byte[] value, CancellationToken token = default(CancellationToken));
 
         /**
          * Records the specified <code>key</code> to be deleted in the private writeset of
@@ -314,7 +316,7 @@ namespace Hyperledger.Fabric.Shim
          * @param collection name of the collection
          * @param key        name of the value to be deleted
          */
-        void DelPrivateData(string collection, string key);
+        Task DelPrivateDataAsync(string collection, string key, CancellationToken token = default(CancellationToken));
 
         /**
          * Returns all existing keys, and their values, that are lexicographically
@@ -331,7 +333,7 @@ namespace Hyperledger.Fabric.Shim
          * @param endKey     private data variable key as the end of the key range (exclusive)
          * @return an {@link Iterable} of {@link KeyValue}
          */
-        IQueryResultsIterator<IKeyValue> GetPrivateDataByRange(string collection, string startKey, string endKey);
+        IAsyncQueryResultsEnumerable<IKeyValue> GetPrivateDataByRangeAsync(string collection, string startKey, string endKey);
 
         /**
          * Returns all existing keys, and their values, that are prefixed by the
@@ -351,7 +353,7 @@ namespace Hyperledger.Fabric.Shim
          * @param compositeKey partial composite key
          * @return an {@link Iterable} of {@link KeyValue}
          */
-        IQueryResultsIterator<IKeyValue> GetPrivateDataByPartialCompositeKey(string collection, string compositeKey);
+        IAsyncQueryResultsEnumerable<IKeyValue> GetPrivateDataByPartialCompositeKeyAsync(string collection, string compositeKey);
 
 
         /**
@@ -368,7 +370,7 @@ namespace Hyperledger.Fabric.Shim
          * @param compositeKey partial composite key
          * @return an {@link Iterable} of {@link KeyValue}
          */
-        IQueryResultsIterator<IKeyValue> GetPrivateDataByPartialCompositeKey(string collection, CompositeKey compositeKey);
+        IAsyncQueryResultsEnumerable<IKeyValue> GetPrivateDataByPartialCompositeKeyAsync(string collection, CompositeKey compositeKey);
 
 
         /**
@@ -391,7 +393,7 @@ namespace Hyperledger.Fabric.Shim
          * @param attributes: Attributes of the composite key
          * @return an {@link Iterable} of {@link KeyValue}
          */
-        IQueryResultsIterator<IKeyValue> GetPrivateDataByPartialCompositeKey(string collection, string objectType, params string[] attributes);
+        IAsyncQueryResultsEnumerable<IKeyValue> GetPrivateDataByPartialCompositeKeyAsync(string collection, string objectType, params string[] attributes);
 
         /**
          * Perform a rich query against a given private collection.
@@ -412,7 +414,7 @@ namespace Hyperledger.Fabric.Shim
          * @throws UnsupportedOperationException if the underlying state database does not support rich
          *                                       queries.
          */
-        IQueryResultsIterator<IKeyValue> GetPrivateDataQueryResult(string collection, string query);
+        IAsyncQueryResultsEnumerable<IKeyValue> GetPrivateDataQueryResultAsync(string collection, string query);
 
 
 
@@ -435,8 +437,9 @@ namespace Hyperledger.Fabric.Shim
          * @param args          Arguments to pass on to the called chaincode.
          * @return {@link Response} object returned by called chaincode
          */
-        Response InvokeChaincode(string chaincodeName, List<byte[]> arguments);
         
+        Task<Response> InvokeChaincodeAsync(string chaincodeName, List<byte[]> arguments, CancellationToken token = default(CancellationToken));
+
         /**
          * Invoke another chaincode using the same transaction context.
          * <p>
@@ -449,20 +452,7 @@ namespace Hyperledger.Fabric.Shim
          * @param channel       If not specified, the caller's channel is assumed.
          * @return {@link Response} object returned by called chaincode
          */
-        Response InvokeChaincodeWithStringArgs(string chaincodeName, List<string> arguments, string channel);
-
-
-        /**
-         * Invoke another chaincode using the same transaction context.
-         * <p>
-         * This is a convenience version of {@link #invokeChaincode(String, List)}.
-         * The string args will be encoded into as UTF-8 bytes.
-         *
-         * @param chaincodeName Name of chaincode to be invoked.
-         * @param args          Arguments to pass on to the called chaincode.
-         * @return {@link Response} object returned by called chaincode
-         */
-        Response InvokeChaincodeWithStringArgs(string chaincodeName, List<string> arguments);
+        Task<Response> InvokeChaincodeWithStringArgsAsync(string chaincodeName, List<string> arguments, string channel, CancellationToken token = default(CancellationToken));
 
         /**
          * Invoke another chaincode using the same transaction context.
@@ -474,7 +464,19 @@ namespace Hyperledger.Fabric.Shim
          * @param args          Arguments to pass on to the called chaincode.
          * @return {@link Response} object returned by called chaincode
          */
-        Response InvokeChaincodeWithStringArgs(string chaincodeName, params string[] arguments);
+        Task<Response> InvokeChaincodeWithStringArgsAsync(string chaincodeName, List<string> arguments, CancellationToken token = default(CancellationToken));
+
+        /**
+         * Invoke another chaincode using the same transaction context.
+         * <p>
+         * This is a convenience version of {@link #invokeChaincode(String, List)}.
+         * The string args will be encoded into as UTF-8 bytes.
+         *
+         * @param chaincodeName Name of chaincode to be invoked.
+         * @param args          Arguments to pass on to the called chaincode.
+         * @return {@link Response} object returned by called chaincode
+         */
+        Task<Response> InvokeChaincodeWithStringArgsAsync(string chaincodeName, CancellationToken token = default(CancellationToken), params string[] arguments);
 
 
         /**
@@ -486,7 +488,7 @@ namespace Hyperledger.Fabric.Shim
          * @param key name of the value
          * @return value the value read from the ledger
          */
-        string GetStringState(string key);
+        Task<string> GetStringStateAsync(string key, CancellationToken token=default(CancellationToken));
             /**
              * Writes the specified value and key into the sidedb collection
              * value converted to byte array.
@@ -496,7 +498,7 @@ namespace Hyperledger.Fabric.Shim
              * @param value      the value to write to the ledger
              */
 
-         void PutPrivateData(string collection, string key, string value);
+         Task PutPrivateDataAsync(string collection, string key, string value, CancellationToken token = default(CancellationToken));
 
 
         /**
@@ -507,7 +509,8 @@ namespace Hyperledger.Fabric.Shim
          * @param key        name of the value
          * @return value the value read from the ledger
          */
-        string GetPrivateDataUTF8(string collection, string key);
+
+        Task<string> GetPrivateDataUTF8Async(string collection, string key, CancellationToken token = default(CancellationToken));
 
         /**
          * Writes the specified value and key into the ledger
@@ -515,7 +518,7 @@ namespace Hyperledger.Fabric.Shim
          * @param key   name of the value
          * @param value the value to write to the ledger
          */
-        void PutStringState(string key, string value);
+        Task PutStringStateAsync(string key, string value, CancellationToken token = default(CancellationToken));
 
         /**
         * Returns the signed transaction proposal currently being executed.
