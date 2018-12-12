@@ -18,7 +18,7 @@ and then integrating the .net chaincode source and/or compiled uploads into [.NE
 Help is appreciated since i'm not proficient in GO language
 
 TODO:
-* Mocks needs to be ported, when i settle for a mock libary.
+* Peer Mock needs to be ported, to finalize integration tests.
 * Examples
 
 

@@ -78,12 +78,12 @@ namespace Hyperledger.Fabric.Shim.Implementation
             Event = payload != null ? new ChaincodeEvent {EventName = name, Payload = ByteString.CopyFrom(payload)} : new ChaincodeEvent {EventName = name};
         }
 
-        public Response InvokeChaincode(string chaincodeName, List<byte[]> arguments)
+        public virtual Response InvokeChaincode(string chaincodeName, List<byte[]> arguments)
         {
             return InvokeChaincode(chaincodeName, arguments, null);
         }
 
-        public Response InvokeChaincodeWithStringArgs(string chaincodeName, List<string> arguments, string channel)
+        public virtual Response InvokeChaincodeWithStringArgs(string chaincodeName, List<string> arguments, string channel)
         {
             return InvokeChaincode(chaincodeName, arguments.Select(a => a.ToBytes()).ToList(), channel);
         }
@@ -197,7 +197,7 @@ namespace Hyperledger.Fabric.Shim.Implementation
         }
 
 
-        public byte[] GetPrivateData(string collection, string key)
+        public virtual byte[] GetPrivateData(string collection, string key)
         {
             ValidateCollection(collection);
             return handler.GetState(ChannelId, TxId, collection, key).ToByteArray();
@@ -255,7 +255,7 @@ namespace Hyperledger.Fabric.Shim.Implementation
             return GetPrivateDataByPartialCompositeKey(collection, new CompositeKey(objectType, attributes));
         }
 
-        public IQueryResultsIterator<IKeyValue> GetPrivateDataQueryResult(string collection, string query)
+        public virtual IQueryResultsIterator<IKeyValue> GetPrivateDataQueryResult(string collection, string query)
         {
             ValidateCollection(collection);
             return new QueryResultsIterator<IKeyValue>(handler, ChannelId, TxId, handler.GetQueryResult(ChannelId, TxId, collection, query), (qv) => new KeyValue(KV.Parser.ParseFrom(qv.ResultBytes)));
@@ -273,9 +273,8 @@ namespace Hyperledger.Fabric.Shim.Implementation
                 digest.Initialize();
                 digest.TransformBlock(signatureHeader.Nonce.ToByteArray(), 0, signatureHeader.Nonce.Length, null, 0);
                 digest.TransformBlock(creator.ToByteArray(), 0, creator.Length, null, 0);
-                //TODO mpiva Might be inverted, check...
                 byte[] epoch = BitConverter.GetBytes(channelHeader.Epoch);
-                if (BitConverter.IsLittleEndian)
+                if (!BitConverter.IsLittleEndian)
                     epoch = epoch.Reverse().ToArray();
                 digest.TransformFinalBlock(epoch, 0, epoch.Length);
                 return digest.Hash;

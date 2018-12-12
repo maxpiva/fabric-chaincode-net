@@ -41,6 +41,12 @@ namespace Hyperledger.Fabric.Shim.Implementation
             return result;
         }
 
+        public override bool Equals(object obj)
+        {
+            if (!(obj is KeyModification))
+                return false;
+            return Equals((KeyModification) obj);
+        }
 
         public bool Equals(KeyModification obj)
         {

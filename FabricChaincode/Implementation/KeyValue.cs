@@ -23,6 +23,13 @@ namespace Hyperledger.Fabric.Shim.Implementation
         public byte[] Value => value.ToByteArray();
         public string StringValue => value.ToStringUtf8();
 
+        public override bool Equals(object obj)
+        {
+            if (!(obj is KeyValue))
+                return false;
+            return Equals((KeyValue)obj);
+        }
+
         public override int GetHashCode()
         {
             int prime = 31;

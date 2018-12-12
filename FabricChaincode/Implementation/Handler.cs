@@ -16,6 +16,7 @@ using Hyperledger.Fabric.Shim.Helper;
 using Hyperledger.Fabric.Shim.Logging;
 using Newtonsoft.Json;
 
+[assembly: InternalsVisibleTo("DynamicProxyGenAssembly2")]
 namespace Hyperledger.Fabric.Shim.Implementation
 {
     public class Handler
@@ -36,6 +37,10 @@ namespace Hyperledger.Fabric.Shim.Implementation
             QueueOutboundChaincodeMessage(NewRegisterChaincodeMessage(chaincodeId));
         }
 
+        internal Handler() 
+        {
+            //Parameterless constructor for Mocking
+        }
         public CCState State { get; private set; }
 
         public ChaincodeMessage NextOutboundChaincodeMessage()
@@ -98,7 +103,7 @@ namespace Hyperledger.Fabric.Shim.Implementation
         {
             if (message.Type == ChaincodeMessage.Types.Type.Ready)
             {
-                State = CCState.ESTABLISHED;
+                State = CCState.READY;
                 logger.Trace($"[{message.Txid,-8}s] Received READY: ready for invocations");
             }
             else
@@ -288,7 +293,7 @@ namespace Hyperledger.Fabric.Shim.Implementation
 
 
         // handleGetState communicates with the validator to fetch the requested state information from the ledger.
-        public ByteString GetState(string channelId, string txId, string collection, string key)
+        public virtual ByteString GetState(string channelId, string txId, string collection, string key)
         {
             return InvokeChaincodeSupport(NewGetStateEventMessage(channelId, txId, collection, key));
         }
@@ -299,7 +304,7 @@ namespace Hyperledger.Fabric.Shim.Implementation
             return isTransaction.ContainsKey(key) && isTransaction[key];
         }
 
-        public void PutState(string channelId, string txId, string collection, string key, ByteString value)
+        public virtual void PutState(string channelId, string txId, string collection, string key, ByteString value)
         {
             logger.Trace($"[{txId,-8}]Inside putstate (\"{collection}\":\"{key}\":\"{value}\"), isTransaction = {IsTransaction(channelId, txId)}");
             if (!IsTransaction(channelId, txId))
@@ -307,14 +312,14 @@ namespace Hyperledger.Fabric.Shim.Implementation
             InvokeChaincodeSupport(NewPutStateEventMessage(channelId, txId, collection, key, value));
         }
 
-        public void DeleteState(string channelId, string txId, string collection, string key)
+        public virtual void DeleteState(string channelId, string txId, string collection, string key)
         {
             if (!IsTransaction(channelId, txId))
                 throw new InvalidOperationException("Cannot del state in query context");
             InvokeChaincodeSupport(NewDeleteStateEventMessage(channelId, txId, collection, key));
         }
 
-        public QueryResponse GetStateByRange(string channelId, string txId, string collection, string startKey, string endKey)
+        public virtual QueryResponse GetStateByRange(string channelId, string txId, string collection, string startKey, string endKey)
         {
             return InvokeQueryResponseMessage(channelId, txId, ChaincodeMessage.Types.Type.GetStateByRange, new GetStateByRange {StartKey = startKey, EndKey = endKey, Collection = collection}.ToByteString());
         }
@@ -329,12 +334,12 @@ namespace Hyperledger.Fabric.Shim.Implementation
             InvokeQueryResponseMessage(channelId, txId, ChaincodeMessage.Types.Type.QueryStateClose, new QueryStateClose {Id = queryId}.ToByteString());
         }
 
-        public QueryResponse GetQueryResult(string channelId, string txId, string collection, string query)
+        public virtual QueryResponse GetQueryResult(string channelId, string txId, string collection, string query)
         {
             return InvokeQueryResponseMessage(channelId, txId, ChaincodeMessage.Types.Type.GetQueryResult, new GetQueryResult {Query = query, Collection = collection}.ToByteString());
         }
 
-        public QueryResponse GetHistoryForKey(string channelId, string txId, string key)
+        public virtual QueryResponse GetHistoryForKey(string channelId, string txId, string key)
         {
             return InvokeQueryResponseMessage(channelId, txId, ChaincodeMessage.Types.Type.GetHistoryForKey, new GetQueryResult {Query = key}.ToByteString());
         }
@@ -391,7 +396,7 @@ namespace Hyperledger.Fabric.Shim.Implementation
             }
         }
 
-        public Response InvokeChaincode(string channelId, string txId, string chaincodeName, List<byte[]> args)
+        public virtual Response InvokeChaincode(string channelId, string txId, string chaincodeName, List<byte[]> args)
         {
             try
             {
