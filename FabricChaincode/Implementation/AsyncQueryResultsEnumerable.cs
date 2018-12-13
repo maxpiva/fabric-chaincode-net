@@ -92,7 +92,7 @@ namespace Hyperledger.Fabric.Shim.Implementation
                 en?.Dispose();
             }
 
-            public async Task<T> Get(int pos, CancellationToken cancellationToken)
+            public async Task<T> GetAsync(int pos, CancellationToken cancellationToken)
             {
                 if (pos == -1)
                     return null;
@@ -100,7 +100,7 @@ namespace Hyperledger.Fabric.Shim.Implementation
                     return Obtained[pos];
                 while (currentpos < pos)
                 {
-                    if (await en.MoveNext(cancellationToken))
+                    if (await en.MoveNext(cancellationToken).ConfigureAwait(false))
                     {
                         Obtained.Add(en.Current);
                         currentpos++;
@@ -130,7 +130,7 @@ namespace Hyperledger.Fabric.Shim.Implementation
             public async Task<bool> MoveNext(CancellationToken cancellationToken)
             {
                 cnt++;
-                Current = await cache.Get(cnt, cancellationToken);
+                Current = await cache.GetAsync(cnt, cancellationToken).ConfigureAwait(false);
                 return Current != null;
             }
 

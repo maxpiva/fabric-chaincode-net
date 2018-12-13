@@ -1,16 +1,32 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
 using System.Text.RegularExpressions;
+using System.Threading;
+using System.Threading.Tasks;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
-namespace Hyperledger.Fabric.Shim.Tests
+namespace Hyperledger.Fabric.Shim.Tests.Utils
 {
 
 
     public static class Extensions
     {
+        public static async Task TimeoutAsync(this Task task, TimeSpan timeout, CancellationToken token)
+        {
+            using (var cancelSource = CancellationTokenSource.CreateLinkedTokenSource(token))
+            {
+                var firsttask = await Task.WhenAny(task, Task.Delay(timeout, cancelSource.Token)).ConfigureAwait(false);
+                if (firsttask == task)
+                {
+                    cancelSource.Cancel();
+                    await task.ConfigureAwait(false); //Propagate Exceptions
+                }
+                else
+                    throw new TimeoutException("The operation has timed out.");
+            }
+        }
+
         public static void ContainsArray<T>(this Assert assert, IEnumerable<IEnumerable<T>> list, IEnumerable<IEnumerable<T>> sublist)
         {
             foreach (IEnumerable<T> data in sublist)

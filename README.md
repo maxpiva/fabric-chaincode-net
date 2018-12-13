@@ -3,13 +3,14 @@
 
 [![Build status](https://ci.appveyor.com/api/projects/status/72hk6ank8wc9m27o?svg=true)](https://ci.appveyor.com/project/maxpiva/fabric-chaincode-net)
 
-v1.3 WIP
+v1.3
 
 Direct .NET port from [fabric-chaincode-java](https://github.com/hyperledger/fabric-chaincode-java)
 
-`Very Alpha`
+`Alpha`
 
-Porting is done and basic unit tests are passing.
+* All unit test passing, including mock tests.
+* Full Async Support to the bone, but Sync Methods are supported for easy porting.
 
 
 Need to figure out how to integrate this in [fabric](https://github.com/hyperledger/fabric)
@@ -17,10 +18,13 @@ and then integrating the .net chaincode source and/or compiled uploads into [.NE
 
 Help is appreciated since i'm not proficient in GO language
 
+**TidBits**
+
+* Users can use ChaincodeBaseAsync for async implementations or ChaincodeBase for sync ones.
+* C# 8 is required. Since it uses new C# 8 IAsyncEnumerable
+
 TODO:
-* Peer Mock needs to be ported, to finalize integration tests.
+* Currently, SHIM handles SIGTERM, SIGINT, etc. But since chaincode start, in fact spawn a thread. a normal Main on chaincode will end and kill the thread, via app exit if not blocked. So a hosting facility may need to be included in ChaincodeBase.
 * Examples
-
-
 
 

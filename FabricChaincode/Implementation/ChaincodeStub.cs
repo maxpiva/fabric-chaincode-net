@@ -103,7 +103,7 @@ namespace Hyperledger.Fabric.Shim.Implementation
         }
 
 
-        public async Task<string> GetStringStateAsync(string key, CancellationToken token) => (await handler.GetStateAsync(ChannelId,TxId,"",key,token)).ToStringUtf8();
+        public async Task<string> GetStringStateAsync(string key, CancellationToken token) => (await handler.GetStateAsync(ChannelId,TxId,"",key,token).ConfigureAwait(false)).ToStringUtf8();
 
         public Task PutPrivateDataAsync(string collection, string key, string value, CancellationToken token=default(CancellationToken))
         {
@@ -113,7 +113,7 @@ namespace Hyperledger.Fabric.Shim.Implementation
 
         public async Task<string> GetPrivateDataUTF8Async(string collection, string key, CancellationToken token = default(CancellationToken))
         {
-            return (await GetPrivateDataAsync(collection, key, token)).ToUTF8String();
+            return (await GetPrivateDataAsync(collection, key, token).ConfigureAwait(false)).ToUTF8String();
         }
         
 
@@ -130,7 +130,7 @@ namespace Hyperledger.Fabric.Shim.Implementation
         public string TxId { get; }
 
 
-        public async Task<byte[]> GetStateAsync(string key, CancellationToken token=default(CancellationToken)) => (await handler.GetStateAsync(ChannelId, TxId, "", key,token)).ToByteArray();
+        public async Task<byte[]> GetStateAsync(string key, CancellationToken token=default(CancellationToken)) => (await handler.GetStateAsync(ChannelId, TxId, "", key,token).ConfigureAwait(false)).ToByteArray();
 
 
         public Task PutStateAsync(string key, byte[] value, CancellationToken token = default(CancellationToken))
@@ -171,7 +171,7 @@ namespace Hyperledger.Fabric.Shim.Implementation
         public virtual async Task<byte[]> GetPrivateDataAsync(string collection, string key, CancellationToken token=default(CancellationToken))
         {
             ValidateCollection(collection);
-            return (await handler.GetStateAsync(ChannelId, TxId, collection, key,token)).ToByteArray();
+            return (await handler.GetStateAsync(ChannelId, TxId, collection, key,token).ConfigureAwait(false)).ToByteArray();
         }
 
 

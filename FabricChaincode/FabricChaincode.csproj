@@ -31,6 +31,12 @@
     <GrpcToolsVersion>1.17.0</GrpcToolsVersion>
     <GrpcIncludeFolders>$(SolutionDir)ProtoBuf;$(SolutionDir)FabricChaincode\Proto</GrpcIncludeFolders>
   </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
+    <DefineConstants>LIBLOG_PUBLIC</DefineConstants>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|AnyCPU'">
+    <DefineConstants>LIBLOG_PUBLIC</DefineConstants>
+  </PropertyGroup>
   <ItemGroup>
     <ProtoIncludeFolder Include="$(SolutionDir)ProtoBuf" />
     <ProtoIncludeFolder Include="$(SolutionDir)FabricChaincode\Proto" />

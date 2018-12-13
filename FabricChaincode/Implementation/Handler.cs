@@ -30,7 +30,7 @@ namespace Hyperledger.Fabric.Shim.Implementation
         private readonly Dictionary<string, AsyncProducerConsumerQueue<ChaincodeMessage>> responseChannel = new Dictionary<string, AsyncProducerConsumerQueue<ChaincodeMessage>>();
         private readonly AsyncLock _channelLock = new AsyncLock();
 
-        private IChaincode chaincode;
+        private IChaincodeAsync chaincode;
 
         internal Handler()
         {
@@ -39,7 +39,7 @@ namespace Hyperledger.Fabric.Shim.Implementation
 
         public CCState State { get; private set; }
 
-        public static async Task<Handler> CreateAsync(ChaincodeID chaincodeId, IChaincode chaincode, CancellationToken token = default(CancellationToken))
+        public static async Task<Handler> CreateAsync(ChaincodeID chaincodeId, IChaincodeAsync chaincode, CancellationToken token = default(CancellationToken))
         {
             Handler h = new Handler();
             h.chaincode = chaincode;
@@ -48,10 +48,7 @@ namespace Hyperledger.Fabric.Shim.Implementation
             return h;
         }
 
-        public static Handler Create(ChaincodeID chaincodeId, IChaincode chaincode)
-        {
-            return CreateAsync(chaincodeId, chaincode).RunAndUnwrap();
-        }
+     
         public Task<ChaincodeMessage> NextOutboundChaincodeMessageAsync(CancellationToken token)
         {
             return outboundChaincodeMessages.DequeueAsync(token);
@@ -60,10 +57,10 @@ namespace Hyperledger.Fabric.Shim.Implementation
         public Task OnChaincodeMessageAsync(ChaincodeMessage chaincodeMessage, CancellationToken token)
         {
             logger.Trace($"[{chaincodeMessage.Txid,-8}s] {chaincodeMessage.ToJsonString()}");
-            return HandleChaincodeMessage(chaincodeMessage, token);
+            return HandleChaincodeMessageAsync(chaincodeMessage, token);
         }
 
-        private async Task HandleChaincodeMessage(ChaincodeMessage message, CancellationToken token)
+        private async Task HandleChaincodeMessageAsync(ChaincodeMessage message, CancellationToken token)
         {
             logger.Debug($"[{message.Txid,-8}s] Handling ChaincodeMessage of type: {message.Type}, handler state {State}");
             if (message.Type == ChaincodeMessage.Types.Type.Keepalive)
@@ -81,7 +78,7 @@ namespace Hyperledger.Fabric.Shim.Implementation
                     HandleEstablished(message);
                     break;
                 case CCState.READY:
-                    await HandleReady(message, token);
+                    await HandleReadyAsync(message, token).ConfigureAwait(false);
                     break;
                 default:
                     logger.Warn($"[{message.Txid,-8}s] Received {message.Type}: cannot handle");
@@ -91,7 +88,7 @@ namespace Hyperledger.Fabric.Shim.Implementation
 
         private void HandleCreated(ChaincodeMessage message)
         {
-            if (message.Type == ChaincodeMessage.Types.Type.Register)
+            if (message.Type == ChaincodeMessage.Types.Type.Registered)
             {
                 State = CCState.ESTABLISHED;
                 logger.Trace($"[{message.Txid,-8}s] Received REGISTERED: moving to established state");
@@ -111,22 +108,22 @@ namespace Hyperledger.Fabric.Shim.Implementation
                 logger.Warn($"[{message.Txid,-8}s] Received {message.Type}: cannot handle");
         }
 
-        private Task HandleReady(ChaincodeMessage message, CancellationToken token)
+        private Task HandleReadyAsync(ChaincodeMessage message, CancellationToken token)
         {
             switch (message.Type)
             {
                 case ChaincodeMessage.Types.Type.Response:
                     logger.Trace($"[{message.Txid,-8}s] Received RESPONSE: publishing to channel");
-                    return SendChannel(message, token);
+                    return SendChannelAsync(message, token);
                 case ChaincodeMessage.Types.Type.Error:
                     logger.Trace($"[{message.Txid,-8}s] Received ERROR: publishing to channel");
-                    return SendChannel(message, token);
+                    return SendChannelAsync(message, token);
                 case ChaincodeMessage.Types.Type.Init:
                     logger.Trace($"[{message.Txid,-8}s] Received INIT: invoking chaincode init");
-                    return HandleInit(message, token);
+                    return HandleInitAsync(message, token);
                 case ChaincodeMessage.Types.Type.Transaction:
                     logger.Trace($"[{message.Txid,-8}s] Received TRANSACTION: invoking chaincode");
-                    return HandleTransaction(message, token);
+                    return HandleTransactionAsync(message, token);
                 default:
                     logger.Warn($"[{message.Txid,-8}s] Received {message.Type}: cannot handle");
                     return Task.FromResult(0);
@@ -155,7 +152,7 @@ namespace Hyperledger.Fabric.Shim.Implementation
             return channel;
         }
 
-        private async Task SendChannel(ChaincodeMessage message, CancellationToken token)
+        private async Task SendChannelAsync(ChaincodeMessage message, CancellationToken token)
         {
             using (await _channelLock.LockAsync(token).ConfigureAwait(false))
             {
@@ -169,7 +166,7 @@ namespace Hyperledger.Fabric.Shim.Implementation
         }
 
 
-        private Task<ChaincodeMessage> ReceiveChannel(AsyncProducerConsumerQueue<ChaincodeMessage> channel, CancellationToken token)
+        private Task<ChaincodeMessage> ReceiveChannelAsync(AsyncProducerConsumerQueue<ChaincodeMessage> channel, CancellationToken token)
         {
             return channel.DequeueAsync(token);
         }
@@ -217,56 +214,67 @@ namespace Hyperledger.Fabric.Shim.Implementation
          *
          * @param message chaincode to be initialized
          */
-        private Task HandleInit(ChaincodeMessage message, CancellationToken token)
+        private Task HandleInitAsync(ChaincodeMessage message, CancellationToken token)
         {
-            return HandleTransaction(message, token);
+            InternalHandleTransaction(message, token, chaincode.InitAsync);
+            return Task.FromResult(0);
+        }
+
+        private Task HandleTransactionAsync(ChaincodeMessage message, CancellationToken token)
+        {
+            InternalHandleTransaction(message, token, chaincode.InvokeAsync);
+            return Task.FromResult(0);
         }
 
 
         // handleTransaction Handles request to execute a transaction.
-        private async Task HandleTransaction(ChaincodeMessage message, CancellationToken token)
+        private void InternalHandleTransaction(ChaincodeMessage message, CancellationToken token,Func<IChaincodeStub,CancellationToken,Task<Response>> action)
         {
-            try
+            Task.Run(async()=>
             {
-                // Get the function and args from Payload
-                ChaincodeInput input = ChaincodeInput.Parser.ParseFrom(message.Payload);
-                // Mark as a transaction (allow put/del state)
-                MarkIsTransaction(message.ChannelId, message.Txid, true);
-                // Create the ChaincodeStub which the chaincode can use to
-                // callback
-                IChaincodeStub stub = new ChaincodeStub(message.ChannelId, message.Txid, this, input.Args.ToList(), message.Proposal);
-                // Call chaincode's init
-                Response result = chaincode.Init(stub);
-                if (result.Status >= Status.INTERNAL_SERVER_ERROR)
+                try
                 {
-                    // Send ERROR with entire result.Message as payload
-                    logger.Error($"[{message.Txid},-8]Init failed. Sending {ChaincodeMessage.Types.Type.Error}");
-                    await QueueOutboundChaincodeMessageAsync(NewErrorEventMessage(message.ChannelId, message.Txid, result.Message, stub.Event), token).ConfigureAwait(false);
+                    // Get the function and args from Payload
+                    ChaincodeInput input = ChaincodeInput.Parser.ParseFrom(message.Payload);
+                    // Mark as a transaction (allow put/del state)
+                    MarkIsTransaction(message.ChannelId, message.Txid, true);
+                    // Create the ChaincodeStub which the chaincode can use to
+                    // callback
+                    IChaincodeStub stub = new ChaincodeStub(message.ChannelId, message.Txid, this, input.Args.ToList(), message.Proposal);
+                    // Call chaincode's init
+                    Response result = await action(stub, token).ConfigureAwait(false);
+                    if (result.Status >= Status.INTERNAL_SERVER_ERROR)
+                    {
+                        // Send ERROR with entire result.Message as payload
+                        logger.Error($"[{message.Txid},-8]Init failed. Sending {ChaincodeMessage.Types.Type.Error}");
+                        await QueueOutboundChaincodeMessageAsync(NewErrorEventMessage(message.ChannelId, message.Txid, result.Message, stub.Event), token).ConfigureAwait(false);
+                    }
+                    else
+                    {
+                        // Send COMPLETED with entire result as payload
+                        logger.Trace($"[{message.Txid},-8]Init succeeded. Sending {ChaincodeMessage.Types.Type.Completed}");
+                        await QueueOutboundChaincodeMessageAsync(NewCompletedEventMessage(message.ChannelId, message.Txid, result, stub.Event), token).ConfigureAwait(false);
+                    }
                 }
-                else
+                catch (Exception e)
                 {
-                    // Send COMPLETED with entire result as payload
-                    logger.Trace($"[{message.Txid},-8]Init succeeded. Sending {ChaincodeMessage.Types.Type.Completed}");
-                    await QueueOutboundChaincodeMessageAsync(NewCompletedEventMessage(message.ChannelId, message.Txid, result, stub.Event), token).ConfigureAwait(false);
+                    logger.ErrorException($"[{message.Txid},-8]Init failed. Sending {ChaincodeMessage.Types.Type.Error}", e);
+                    await QueueOutboundChaincodeMessageAsync(NewErrorEventMessage(message.ChannelId, message.Txid, e), token).ConfigureAwait(false);
                 }
-            }
-            catch (Exception e)
-            {
-                logger.ErrorException($"[{message.Txid},-8]Init failed. Sending {ChaincodeMessage.Types.Type.Error}", e);
-                await QueueOutboundChaincodeMessageAsync(NewErrorEventMessage(message.ChannelId, message.Txid, e), token).ConfigureAwait(false);
-            }
-            finally
-            {
-                // delete isTransaction entry
-                DeleteIsTransaction(message.ChannelId, message.Txid);
-            }
+                finally
+                {
+                    // delete isTransaction entry
+                    DeleteIsTransaction(message.ChannelId, message.Txid);
+                }
+
+            },token);
         }
 
 
         // handleGetState communicates with the validator to fetch the requested state information from the ledger.
         public virtual Task<ByteString> GetStateAsync(string channelId, string txId, string collection, string key, CancellationToken token = default(CancellationToken))
         {
-            return InvokeChaincodeSupport(NewGetStateEventMessage(channelId, txId, collection, key), token);
+            return InvokeChaincodeSupportAsync(NewGetStateEventMessage(channelId, txId, collection, key), token);
         }
 
         private bool IsTransaction(string channelId, string uuid)
@@ -280,46 +288,46 @@ namespace Hyperledger.Fabric.Shim.Implementation
             logger.Trace($"[{txId,-8}]Inside putstate (\"{collection}\":\"{key}\":\"{value}\"), isTransaction = {IsTransaction(channelId, txId)}");
             if (!IsTransaction(channelId, txId))
                 throw new InvalidOperationException("Cannot put state in query context");
-            return InvokeChaincodeSupport(NewPutStateEventMessage(channelId, txId, collection, key, value), token);
+            return InvokeChaincodeSupportAsync(NewPutStateEventMessage(channelId, txId, collection, key, value), token);
         }
 
         public virtual Task DeleteStateAsync(string channelId, string txId, string collection, string key, CancellationToken token = default(CancellationToken))
         {
             if (!IsTransaction(channelId, txId))
                 throw new InvalidOperationException("Cannot del state in query context");
-            return InvokeChaincodeSupport(NewDeleteStateEventMessage(channelId, txId, collection, key), token);
+            return InvokeChaincodeSupportAsync(NewDeleteStateEventMessage(channelId, txId, collection, key), token);
         }
 
         public virtual Task<QueryResponse> GetStateByRangeAsync(string channelId, string txId, string collection, string startKey, string endKey, CancellationToken token = default(CancellationToken))
         {
-            return InvokeQueryResponseMessage(channelId, txId, ChaincodeMessage.Types.Type.GetStateByRange, new GetStateByRange {StartKey = startKey, EndKey = endKey, Collection = collection}.ToByteString(), token);
+            return InvokeQueryResponseMessageAsync(channelId, txId, ChaincodeMessage.Types.Type.GetStateByRange, new GetStateByRange {StartKey = startKey, EndKey = endKey, Collection = collection}.ToByteString(), token);
         }
 
         public Task<QueryResponse> QueryStateNextAsync(string channelId, string txId, string queryId, CancellationToken token = default(CancellationToken))
         {
-            return InvokeQueryResponseMessage(channelId, txId, ChaincodeMessage.Types.Type.QueryStateNext, new QueryStateNext {Id = queryId}.ToByteString(), token);
+            return InvokeQueryResponseMessageAsync(channelId, txId, ChaincodeMessage.Types.Type.QueryStateNext, new QueryStateNext {Id = queryId}.ToByteString(), token);
         }
 
         public Task<QueryResponse> QueryStateCloseAsync(string channelId, string txId, string queryId, CancellationToken token = default(CancellationToken))
         {
-            return InvokeQueryResponseMessage(channelId, txId, ChaincodeMessage.Types.Type.QueryStateClose, new QueryStateClose {Id = queryId}.ToByteString(), token);
+            return InvokeQueryResponseMessageAsync(channelId, txId, ChaincodeMessage.Types.Type.QueryStateClose, new QueryStateClose {Id = queryId}.ToByteString(), token);
         }
 
         public virtual Task<QueryResponse> GetQueryResultAsync(string channelId, string txId, string collection, string query, CancellationToken token = default(CancellationToken))
         {
-            return InvokeQueryResponseMessage(channelId, txId, ChaincodeMessage.Types.Type.GetQueryResult, new GetQueryResult {Query = query, Collection = collection}.ToByteString(), token);
+            return InvokeQueryResponseMessageAsync(channelId, txId, ChaincodeMessage.Types.Type.GetQueryResult, new GetQueryResult {Query = query, Collection = collection}.ToByteString(), token);
         }
 
         public virtual Task<QueryResponse> GetHistoryForKeyAsync(string channelId, string txId, string key, CancellationToken token = default(CancellationToken))
         {
-            return InvokeQueryResponseMessage(channelId, txId, ChaincodeMessage.Types.Type.GetHistoryForKey, new GetQueryResult {Query = key}.ToByteString(), token);
+            return InvokeQueryResponseMessageAsync(channelId, txId, ChaincodeMessage.Types.Type.GetHistoryForKey, new GetQueryResult {Query = key}.ToByteString(), token);
         }
 
-        private async Task<QueryResponse> InvokeQueryResponseMessage(string channelId, string txId, ChaincodeMessage.Types.Type type, ByteString payload, CancellationToken token)
+        private async Task<QueryResponse> InvokeQueryResponseMessageAsync(string channelId, string txId, ChaincodeMessage.Types.Type type, ByteString payload, CancellationToken token)
         {
             try
             {
-                return QueryResponse.Parser.ParseFrom(await InvokeChaincodeSupport(NewEventMessage(type, channelId, txId, payload), token).ConfigureAwait(false));
+                return QueryResponse.Parser.ParseFrom(await InvokeChaincodeSupportAsync(NewEventMessage(type, channelId, txId, payload), token).ConfigureAwait(false));
             }
             catch (Exception e)
             {
@@ -328,7 +336,7 @@ namespace Hyperledger.Fabric.Shim.Implementation
             }
         }
 
-        private async Task<ByteString> InvokeChaincodeSupport(ChaincodeMessage message, CancellationToken token)
+        private async Task<ByteString> InvokeChaincodeSupportAsync(ChaincodeMessage message, CancellationToken token)
         {
             string channelId = message.ChannelId;
             string txId = message.Txid;
@@ -339,10 +347,10 @@ namespace Hyperledger.Fabric.Shim.Implementation
                 AsyncProducerConsumerQueue<ChaincodeMessage> respChannel = AquireResponseChannelForTx(channelId, txId);
 
                 // send the message
-                await QueueOutboundChaincodeMessageAsync(message, token);
+                await QueueOutboundChaincodeMessageAsync(message, token).ConfigureAwait(false);
 
                 // wait for response
-                ChaincodeMessage response = await ReceiveChannel(respChannel, token);
+                ChaincodeMessage response = await ReceiveChannelAsync(respChannel, token).ConfigureAwait(false);
                 logger.Trace($"[{txId},-8]{response.Type} response received.");
 
                 // handle response
@@ -374,7 +382,7 @@ namespace Hyperledger.Fabric.Shim.Implementation
                 // create invocation specification of the chaincode to invoke
                 ChaincodeSpec invocationSpec = new ChaincodeSpec {ChaincodeId = new ChaincodeID {Name = chaincodeName}, Input = new ChaincodeInput {Args = {args.Select(ByteString.CopyFrom)}}};
                 // invoke other chaincode
-                ByteString payload = await InvokeChaincodeSupport(NewInvokeChaincodeMessage(channelId, txId, invocationSpec.ToByteString()), token);
+                ByteString payload = await InvokeChaincodeSupportAsync(NewInvokeChaincodeMessage(channelId, txId, invocationSpec.ToByteString()), token).ConfigureAwait(false);
 
                 // response message payload should be yet another chaincode
                 // message (the actual response message)

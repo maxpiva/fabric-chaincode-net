@@ -12,6 +12,7 @@ using Hyperledger.Fabric.Protos.Peer.ProposalPackage;
 using Hyperledger.Fabric.Shim.Helper;
 using Hyperledger.Fabric.Shim.Implementation;
 using Hyperledger.Fabric.Shim.Ledger;
+using Hyperledger.Fabric.Shim.Tests.Utils;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Moq;
 using KeyModification = Hyperledger.Fabric.Protos.Ledger.QueryResult.KeyModification;

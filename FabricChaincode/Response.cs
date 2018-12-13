@@ -20,6 +20,7 @@ namespace Hyperledger.Fabric.Shim
             Status = status;
             Message = message;
             Payload = payload;
+            
         }
 
         public Status Status { get; }

@@ -23,12 +23,12 @@ namespace Hyperledger.Fabric.Shim.Tests.Implementation
         {
             CancellationToken token = default(CancellationToken);
 
-            ChaincodeBase cb = new EmptyChaincode();
+            ChaincodeBaseAsync cb = new EmptyChaincode();
 
             ChaincodeID chaincodeId = new ChaincodeID {Name = "mycc"};
-            Handler handler = Handler.Create(chaincodeId, cb);
+            Handler handler = Handler.CreateAsync(chaincodeId, cb).RunAndUnwrap();
 
-            ChaincodeMessage msgReg = new ChaincodeMessage {Type = ChaincodeMessage.Types.Type.Register};
+            ChaincodeMessage msgReg = new ChaincodeMessage {Type = ChaincodeMessage.Types.Type.Registered};
             // Correct message
             handler.OnChaincodeMessageAsync(msgReg,token).RunAndUnwrap();
             Assert.AreEqual(CCState.ESTABLISHED, handler.State, "Not correct handler state");
@@ -38,7 +38,7 @@ namespace Hyperledger.Fabric.Shim.Tests.Implementation
             handler.OnChaincodeMessageAsync(msgReady, token).RunAndUnwrap();
             Assert.AreEqual(CCState.READY, handler.State, "Not correct handler state");
 
-            handler = Handler.Create(chaincodeId, cb);
+            handler = Handler.CreateAsync(chaincodeId, cb).RunAndUnwrap();
             // Incorrect message
             handler.OnChaincodeMessageAsync(msgReady, token).RunAndUnwrap();
             Assert.AreEqual(CCState.CREATED, handler.State, "Not correct handler state");

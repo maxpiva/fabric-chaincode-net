@@ -23,9 +23,12 @@ import java.util.Map;
  * Defines methods that all chaincodes must implement.
  */
 
+using System.Threading;
+using System.Threading.Tasks;
+
 namespace Hyperledger.Fabric.Shim
 {
-    public interface IChaincode
+    public interface IChaincodeSync
     {
         /**
 	 * Called during an instantiate transaction after the container has been
@@ -38,5 +41,20 @@ namespace Hyperledger.Fabric.Shim
 	 * variables.
 	 */
         Response Invoke(IChaincodeStub stub);
+    }
+
+    public interface IChaincodeAsync
+    {
+        /**
+        * Called during an instantiate transaction after the container has been
+        * established, allowing the chaincode to initialize its internal data.
+        */
+        Task<Response> InitAsync(IChaincodeStub stub, CancellationToken token=default(CancellationToken));
+
+        /**
+	 * Called for every Invoke transaction. The chaincode may change its state
+	 * variables.
+	 */
+        Task<Response> InvokeAsync(IChaincodeStub stub, CancellationToken token = default(CancellationToken));
     }
 }
