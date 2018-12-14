@@ -19,7 +19,6 @@ using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using Grpc.Core;
-using Hyperledger.Fabric.Protos.Peer;
 using Hyperledger.Fabric.Shim.Helper;
 using Hyperledger.Fabric.Shim.Implementation;
 using Hyperledger.Fabric.Shim.Logging;
@@ -42,7 +41,15 @@ namespace Hyperledger.Fabric.Shim
         private static readonly string CORE_PEER_TLS_ROOTCERT_FILE = "CORE_PEER_TLS_ROOTCERT_FILE";
         private static readonly string ENV_TLS_CLIENT_KEY_PATH = "CORE_TLS_CLIENT_KEY_PATH";
         private static readonly string ENV_TLS_CLIENT_CERT_PATH = "CORE_TLS_CLIENT_CERT_PATH";
-       
+
+        /**
+	 * Start chaincode
+	 * 
+	 * @param args
+	 *            command line arguments
+	 */
+        private CancellationTokenSource exitSource;
+
         private bool help;
         private OptionSet options;
 
@@ -59,6 +66,18 @@ namespace Hyperledger.Fabric.Shim
 
 
         public abstract Task<Response> InvokeAsync(IChaincodeStub stub, CancellationToken token = default(CancellationToken));
+
+        public void Dispose()
+        {
+            try
+            {
+                exitSource?.Cancel();
+            }
+            catch (Exception)
+            {
+                //ignored
+            }
+        }
 
 
         private void ProcessCommandLineOptions(string[] args)
@@ -104,6 +123,8 @@ namespace Hyperledger.Fabric.Shim
             //TODO mpiva
             //Since we use liblog, which is a log abstraction library. after the real logging library is
             //decided, this can be coded.
+            //Swapping liblog, for NET Core logging?...
+
         }
 
         private void ValidateOptions()
@@ -162,23 +183,10 @@ namespace Hyperledger.Fabric.Shim
             logger.Info("CORE_TLS_CLIENT_CERT_PATH" + (TlsClientCertPath ?? ""));
         }
 
-        /**
-	 * Start chaincode
-	 * 
-	 * @param args
-	 *            command line arguments
-	 */
-        private CancellationTokenSource exitSource;
-        public void Start(string[] args, CancellationTokenSource ts=null)
+        public async Task StartAsync(string[] args, CancellationToken token = default(CancellationToken))
         {
-            if (ts == null)
-            {
-                exitSource = new CancellationTokenSource();
-                AppDomain.CurrentDomain.ProcessExit += ProcessExit;
-            }
-            else
-                exitSource = ts;
-
+            exitSource = CancellationTokenSource.CreateLinkedTokenSource(token);
+            AppDomain.CurrentDomain.ProcessExit += ProcessExit;
             try
             {
                 ProcessEnvironmentOptions();
@@ -188,35 +196,36 @@ namespace Hyperledger.Fabric.Shim
                 if (help)
                 {
                     StringWriter wr = new StringWriter();
+                    wr.WriteLine("Usage chaincode [OPTIONS]");
+                    wr.WriteLine("Options:");
                     options.WriteOptionDescriptions(wr);
-                    logger.Info("Usage chaincode [OPTIONS]");
-                    logger.Info("Options:");
                     logger.Info(wr.ToString());
+                    Console.Write(wr.ToString());
                     return;
                 }
 
                 if (Id == null)
-                    logger.Error($"The chaincode id must be specified using either the -i or --i command line options or the {CORE_CHAINCODE_ID_NAME} environment variable.");
-                Task.Run(async () =>
                 {
-                    logger.Trace("chaincode started");
-                    Channel connection = NewPeerClientConnection();
-                    logger.Trace("connection created");
-                    ChaincodeSupportStream stream=new ChaincodeSupportStream();
-                    await stream.ProcessAndBlockAsync(connection, this, Id, exitSource.Token).ConfigureAwait(false);
-                    logger.Trace("Finished");
-                }, exitSource.Token);
+                    string error = $"The chaincode id must be specified using either the -i or --i command line options or the {CORE_CHAINCODE_ID_NAME} environment variable.";
+                    logger.Error(error);
+                    Console.WriteLine(error);
+                }
+                logger.Trace("chaincode started");
+                Channel connection = NewPeerClientConnection();
+                logger.Trace("connection created");
+                ChaincodeSupportStream stream = new ChaincodeSupportStream();
+                await stream.ProcessAndBlockAsync(connection, this, Id, exitSource.Token).ConfigureAwait(false);
+                logger.Trace("Finished");
             }
             catch (Exception e)
             {
                 logger.Error(e.Message, e);
+                Console.WriteLine("Error: "+e.Message);
             }
             finally
             {
-                if (ts == null)
-                    AppDomain.CurrentDomain.ProcessExit -= ProcessExit;
+                AppDomain.CurrentDomain.ProcessExit -= ProcessExit;
             }
-            
         }
 
         public void ProcessExit(object ob, EventArgs args)
@@ -224,9 +233,9 @@ namespace Hyperledger.Fabric.Shim
             logger.Info("ProcessExit!");
             exitSource.Cancel();
         }
+
         public Channel NewPeerClientConnection()
         {
-      
             logger.Info("Configuring channel connection to peer.");
             ChannelCredentials cred = ChannelCredentials.Insecure;
             if (IsTlsEnabled)
@@ -317,19 +326,6 @@ namespace Hyperledger.Fabric.Shim
         protected static Response newErrorResponse(Exception throwable)
         {
             return NewErrorResponse(throwable.Message, throwable.StackTrace.ToBytes());
-        }
-
-        public void Dispose()
-        {
-
-            try
-            {
-                exitSource?.Cancel();
-            }
-            catch (Exception)
-            {
-                //ignored
-            }
         }
     }
 }
