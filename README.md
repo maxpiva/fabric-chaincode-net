@@ -20,7 +20,11 @@ Help is appreciated since i'm not proficient in GO language
 
 **TidBits**
 
-* Users can use ChaincodeBaseAsync for async implementations or ChaincodeBase for sync ones.
+* Users can inherit ChaincodeBaseAsync for async implementations or ChaincodeBase for sync ones.
+* Users can inherit ChaincodeBaseMapperAsync or ChainCodeBaseMapper for automapping, you only need to implements the functions with the format:
+  *Response **FunctionName**(IChaincodeStub stub)* or 
+  *Task<Response> **FunctionName**Async(IChaincodeStub stub, CancellationToken token)* in case of async usage.
+* Added FunctionName attribute for the above defined methods. in case your implementation name differs from the chaincode function.
 * C# 8 is required. Since it uses new C# 8 IAsyncEnumerable
 
 TODO:
