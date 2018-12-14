@@ -100,18 +100,21 @@ namespace Hyperledger.Fabric.Shim.Implementation
 
             public async Task<QueryResponseMetadata> GetMetadataAsync(CancellationToken cancellationToken)
             {
-                if (en.firstReponse == null)
-                    await GetAsync(0, cancellationToken).ConfigureAwait(false);
-                if (en.firstReponse != null)
+                if (metadata==null)
                 {
-                    try
+                    if (en.firstReponse == null)
+                        await GetAsync(0, cancellationToken).ConfigureAwait(false);
+                    if (en.firstReponse != null)
                     {
-                        metadata = QueryResponseMetadata.Parser.ParseFrom(en.firstReponse.Metadata);
-                    }
-                    catch (InvalidProtocolBufferException)
-                    {
-                        logger.Warn("can't parse response metadata");
-                        throw;
+                        try
+                        {
+                            metadata = QueryResponseMetadata.Parser.ParseFrom(en.firstReponse.Metadata);
+                        }
+                        catch (InvalidProtocolBufferException)
+                        {
+                            logger.Warn("can't parse response metadata");
+                            throw;
+                        }
                     }
                 }
                 return metadata;
