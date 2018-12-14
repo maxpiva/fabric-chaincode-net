@@ -124,6 +124,13 @@ namespace Hyperledger.Fabric.Shim
          * @return value the value read from the ledger
          */
         Task<byte[]> GetStateAsync(string key, CancellationToken token=default(CancellationToken));
+        /**
+         * retrieves the key-level endorsement policy for <code>key</code>.
+         * Note that this will introduce a read dependency on <code>key</code> in the transaction's readset.
+         * @param key key to get key level endorsement
+         * @return endorsement policy
+         */
+        Task<byte[]> GetStateValidationParameterAsync(string key, CancellationToken token = default(CancellationToken));
 
         /**
          * Puts the specified <code>key</code> and <code>value</code> into the transaction's
@@ -139,6 +146,13 @@ namespace Hyperledger.Fabric.Shim
          * @param value the value to write to the ledger
          */
         Task PutStateAsync(string key, byte[] value, CancellationToken token = default(CancellationToken));
+        /**
+         * Sets the key-level endorsement policy for <code>key</code>.
+         *
+         * @param key key to set key level endorsement
+         * @param value endorsement policy
+         */
+        Task SetStateValidationParameterAsync(string key, byte[] value, CancellationToken token = default(CancellationToken));
 
         /**
          * Records the specified <code>key</code> to be deleted in the writeset of
@@ -169,6 +183,28 @@ namespace Hyperledger.Fabric.Shim
         IAsyncQueryResultsEnumerable<IKeyValue> GetStateByRangeAsync(string startKey, string endKey);
 
         /**
+         * Returns a range iterator over a set of keys in the ledger. The iterator can be used to fetch keys between the
+         * <code>startKey</code> (inclusive) and <code>endKey</code> (exclusive).
+         * When an empty string is passed as a value to the <code>bookmark</code>  argument, the returned iterator can be used to fetch
+         * the first <code>pageSize</code> keys between the  <code>startKey</code> and <code>endKey</code>.
+         * When the <code>bookmark</code> is a non-empty string, the iterator can be used to fetch first <code>pageSize</code> keys between the
+         * <code>bookmark</code> and <code>endKey</code>.
+         * Note that only the bookmark present in a prior page of query results ({@link org.hyperledger.fabric.protos.peer.ChaincodeShim.QueryResponseMetadata})
+         * can be used as a value to the bookmark argument. Otherwise, an empty string must be passed as bookmark.
+         * The keys are returned by the iterator in lexical order. Note  that <code>startKey</code> and <code>endKey</code> can be empty string, which implies
+         * unbounded range query on start or end.
+         * This call is only supported in a read only transaction.
+         *
+         * @param startKey
+         * @param endKey
+         * @param pageSize
+         * @param bookmark
+         * @return
+         */
+        IAsyncQueryResultsEnumerable<IKeyValue> GetStateByRangeWithPaginationAsync(string startKey, string endKey, int pageSize, string bookmark);
+
+
+        /**
          * Returns all existing keys, and their values, that are prefixed by the
          * specified partial {@link CompositeKey}.
          * <p>
@@ -187,6 +223,25 @@ namespace Hyperledger.Fabric.Shim
          * @return an {@link Iterable} of {@link KeyValue}
          */
         IAsyncQueryResultsEnumerable<IKeyValue> GetStateByPartialCompositeKeyAsync(string compositeKey);
+
+        /**
+         * Queries the state in the ledger based on a given partial composite key. This function returns an iterator
+         * which can be used to iterate over the composite keys whose prefix matches the given partial composite key. <p>
+         * When an empty string is passed as a value to the <code>bookmark</code>  argument, the returned iterator can be used to fetch
+         * the first <code>pageSize</code> composite keys whose prefix matches the given partial composite key. <p>
+         * When the <code>bookmark</code> is a non-empty string, the iterator can be used to fetch first <code>pageSize</code> keys between the
+         * <code>bookmark</code> (inclusive) and and the last matching composite key.<p>
+         * Note that only the bookmark present in a prior page of query results ({@link org.hyperledger.fabric.protos.peer.ChaincodeShim.QueryResponseMetadata})
+         * can be used as a value to the bookmark argument. Otherwise, an empty string must be passed as bookmark. <p>
+         * This call is only supported in a read only transaction.
+         *
+         * @param compositeKey
+         * @param pageSize
+         * @param bookmark
+         * @return
+         */
+        IAsyncQueryResultsEnumerable<IKeyValue> GetStateByPartialCompositeKeyWithPaginationAsync(CompositeKey compositeKey, int pageSize, string bookmark);
+
 
         /**
          * Returns all existing keys, and their values, that are prefixed by the
@@ -255,19 +310,39 @@ namespace Hyperledger.Fabric.Shim
          *                                       queries.
          */
         IAsyncQueryResultsEnumerable<IKeyValue> GetQueryResultAsync(string query);
+        /**
+         * Performs a "rich" query against a state database.
+         * It is only supported for state databases that support rich query, e.g., CouchDB. The query string is in the native syntax
+         * of the underlying state database. An iterator is returned which can be used to iterate over keys in the query result set.
+         * When an empty string is passed as a value to the <code>bookmark</code>  argument, the returned iterator can be used to fetch
+         * the first <code>pageSize</code> of query results.. <p>
+         * When the <code>bookmark</code> is a non-empty string, the iterator can be used to fetch first <code>pageSize</code> keys between the
+         * <code>bookmark</code> (inclusive) and the last key in the query result.<p>
+         * Note that only the bookmark present in a prior page of query results ({@link org.hyperledger.fabric.protos.peer.ChaincodeShim.QueryResponseMetadata})
+         * can be used as a value to the bookmark argument. Otherwise, an empty string must be passed as bookmark. <p>
+         * This call is only supported in a read only transaction.
+         *
+         * @param query
+         * @param pageSize
+         * @param bookmark
+         * @return
+         */
+        IAsyncQueryResultsEnumerable<IKeyValue> GetQueryResultWithPaginationAsync(string query, int pageSize, string bookmark);
+
 
         /**
-         * Returns a history of key values across time.
-         * <p>
-         * For each historic key update, the historic value and associated
-         * transaction id and timestamp are returned. The timestamp is the
-         * timestamp provided by the client in the proposal header.
-         * This method requires peer configuration
-         * <code>core.ledger.history.enableHistoryDatabase</code> to be true.
-         *
-         * @param key The state variable key
-         * @return an {@link Iterable} of {@link KeyModification}
-         */
+            /**
+             * Returns a history of key values across time.
+             * <p>
+             * For each historic key update, the historic value and associated
+             * transaction id and timestamp are returned. The timestamp is the
+             * timestamp provided by the client in the proposal header.
+             * This method requires peer configuration
+             * <code>core.ledger.history.enableHistoryDatabase</code> to be true.
+             *
+             * @param key The state variable key
+             * @return an {@link Iterable} of {@link KeyModification}
+             */
         IAsyncQueryResultsEnumerable<IKeyModification> GetHistoryForKeyAsync(string key);
 
         /**
@@ -283,7 +358,16 @@ namespace Hyperledger.Fabric.Shim
          * @return value the value read from the collection
          */
         Task<byte[]> GetPrivateDataAsync(string collection, string key, CancellationToken token = default(CancellationToken));
-
+        /**
+         * Retrieves the key-level endorsement
+         * policy for the private data specified by <code>key</code>. Note that this introduces
+         * a read dependency on <code>key</code> in the transaction's readset.
+         *
+         * @param collection name of the collection
+         * @param key key to get endorsement policy
+         * @return
+         */
+        Task<byte[]> GetPrivateDataValidationParameterAsync(string collection, string key, CancellationToken token = default(CancellationToken));
         /**
          * Puts the specified <code>key</code> and <code>value</code> into the transaction's
          * private writeset.
@@ -302,7 +386,14 @@ namespace Hyperledger.Fabric.Shim
          * @param value      the value to write to the ledger
          */
         Task PutPrivateDataAsync(string collection, string key, byte[] value, CancellationToken token = default(CancellationToken));
-
+        /**
+ * Sets the key-level endorsement policy for the private data specified by <code>key</code>.
+         *
+         * @param collection name of the collection
+         * @param key   key to set endorsement policy
+         * @param value endorsement policy
+         */
+        Task SetPrivateDataValidationParameterAsync(string collection, string key, byte[] value, CancellationToken token = default(CancellationToken));
         /**
          * Records the specified <code>key</code> to be deleted in the private writeset of
          * the transaction.

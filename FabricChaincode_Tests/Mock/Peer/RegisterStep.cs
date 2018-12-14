@@ -14,7 +14,7 @@ namespace Hyperledger.Fabric.Shim.Tests.Mock.Peer
      * Waits for REGISTER message from chaincode
      * Sends back pair of messages: REGISTERED and READY
      */
-    public class RegisterStep : ScenarioStep
+    public class RegisterStep : IScenarioStep
     {
         ChaincodeMessage orgMsg;
         public bool Expected(ChaincodeMessage msg)

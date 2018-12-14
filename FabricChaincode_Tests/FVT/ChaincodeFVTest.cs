@@ -10,6 +10,8 @@ using System.Threading;
 using System.Threading.Tasks;
 using Google.Protobuf;
 using Hyperledger.Fabric.Protos.Peer;
+using Hyperledger.Fabric.Shim.Ext.Sbe;
+using Hyperledger.Fabric.Shim.Ext.Sbe.Implementation;
 using Hyperledger.Fabric.Shim.Helper;
 using Hyperledger.Fabric.Shim.Ledger;
 using Hyperledger.Fabric.Shim.Tests.Chaincode;
@@ -19,11 +21,11 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace Hyperledger.Fabric.Shim.Tests.FVT
 {
-	[TestClass]
+    [TestClass]
     public class ChaincodeFVTest
     {
 #if DEBUG
-        private static int Timeout = 200000;
+        private static readonly int Timeout = 200000;
 #else
         private static int Timeout = 5000;
 #endif
@@ -41,7 +43,7 @@ namespace Hyperledger.Fabric.Shim.Tests.FVT
         {
             ChaincodeBaseAsync cb = new EmptyChaincode();
 
-            List<ScenarioStep> scenario = new List<ScenarioStep>();
+            List<IScenarioStep> scenario = new List<IScenarioStep>();
             scenario.Add(new RegisterStep());
 
             server = ChaincodeMockPeer.StartServer(scenario);
@@ -62,7 +64,7 @@ namespace Hyperledger.Fabric.Shim.Tests.FVT
             ByteString payload = inp.ToByteString();
             ChaincodeMessage initMsg = MessageUtil.NewEventMessage(ChaincodeMessage.Types.Type.Init, "testChannel", "0", payload, null);
 
-            List<ScenarioStep> scenario = new List<ScenarioStep>();
+            List<IScenarioStep> scenario = new List<IScenarioStep>();
             scenario.Add(new RegisterStep());
             scenario.Add(new CompleteStep());
 
@@ -87,7 +89,7 @@ namespace Hyperledger.Fabric.Shim.Tests.FVT
             ByteString initPayload = ci.ToByteString();
             ChaincodeMessage initMsg = MessageUtil.NewEventMessage(ChaincodeMessage.Types.Type.Init, "testChannel", "0", initPayload, null);
 
-            List<ScenarioStep> scenario = new List<ScenarioStep>();
+            List<IScenarioStep> scenario = new List<IScenarioStep>();
             scenario.Add(new RegisterStep());
             scenario.Add(new PutValueStep("100"));
             scenario.Add(new CompleteStep());
@@ -117,6 +119,68 @@ namespace Hyperledger.Fabric.Shim.Tests.FVT
             Assert.AreEqual(Protos.Peer.ProposalResponsePackage.Response.Parser.ParseFrom(server.LastMessageRcvd.Payload).Message, "OK response2");
         }
 
+        public class Cb8 : ChaincodeBase
+        {
+            public override Response Init(IChaincodeStub stub)
+            {
+                return NewSuccessResponse("OK response1");
+            }
+
+            public override Response Invoke(IChaincodeStub stub)
+            {
+                string aKey = stub.StringArgs[1];
+                byte[] epBytes = stub.GetStateValidationParameter(aKey);
+                StateBasedEndorsement stateBasedEndorsement = new StateBasedEndorsement(epBytes);
+                Assert.AreEqual(stateBasedEndorsement.ListOrgs().Count, 2);
+                stub.SetStateValidationParameter(aKey, stateBasedEndorsement.Policy());
+                return NewSuccessResponse("OK response2");
+            }
+        }
+
+        [TestMethod]
+        public void TestStateValidationParameter()
+        {
+            ChaincodeBase cb = new Cb8();
+            ChaincodeInput ci = new ChaincodeInput();
+            ci.Args.AddRange(new[] {ByteString.CopyFromUtf8("init")});
+            ByteString initPayload = ci.ToByteString();
+            ChaincodeMessage initMsg = MessageUtil.NewEventMessage(ChaincodeMessage.Types.Type.Init, "testChannel", "0", initPayload, null);
+            StateBasedEndorsement sbe = new StateBasedEndorsement(null);
+            sbe.AddOrgs(RoleType.RoleTypePeer, "Org1");
+            sbe.AddOrgs(RoleType.RoleTypeMember, "Org2");
+
+            List<IScenarioStep> scenario = new List<IScenarioStep>();
+
+
+            scenario.Add(new RegisterStep());
+            scenario.Add(new CompleteStep());
+
+            scenario.Add(new GetStateMetadataStep(sbe));
+            scenario.Add(new PutStateMetadataStep(sbe));
+            scenario.Add(new CompleteStep());
+            server = ChaincodeMockPeer.StartServer(scenario);
+
+            cb.Start(new string[] {"-a", "127.0.0.1:7052", "-i", "testId"});
+            CheckScenarioStepEnded(server, 1, Timeout);
+
+            server.Send(initMsg);
+            CheckScenarioStepEnded(server, 2, Timeout);
+            Assert.AreEqual(server.LastMessageSend.Type, ChaincodeMessage.Types.Type.Init);
+            Assert.AreEqual(server.LastMessageRcvd.Type, ChaincodeMessage.Types.Type.Completed);
+            Assert.AreEqual(Protos.Peer.ProposalResponsePackage.Response.Parser.ParseFrom(server.LastMessageRcvd.Payload).Message, "OK response1");
+
+
+            ci = new ChaincodeInput();
+            ci.Args.AddRange(new[] {ByteString.CopyFromUtf8("invoke"), ByteString.CopyFromUtf8("a")});
+            ByteString invokePayload = ci.ToByteString();
+            ChaincodeMessage invokeMsg = MessageUtil.NewEventMessage(ChaincodeMessage.Types.Type.Transaction, "testChannel", "0", invokePayload, null);
+            server.Send(invokeMsg);
+            CheckScenarioStepEnded(server, 5, Timeout);
+            Assert.AreEqual(server.LastMessageSend.Type, ChaincodeMessage.Types.Type.Response);
+            Assert.AreEqual(server.LastMessageRcvd.Type, ChaincodeMessage.Types.Type.Completed);
+            Assert.AreEqual(Protos.Peer.ProposalResponsePackage.Response.Parser.ParseFrom(server.LastMessageRcvd.Payload).Message, "OK response2");
+        }
+
         [TestMethod]
         public void TestInvokeRangeQ()
         {
@@ -130,7 +194,7 @@ namespace Hyperledger.Fabric.Shim.Tests.FVT
             ByteString invokePayload = ci.ToByteString();
             ChaincodeMessage invokeMsg = MessageUtil.NewEventMessage(ChaincodeMessage.Types.Type.Transaction, "testChannel", "0", invokePayload, null);
 
-            List<ScenarioStep> scenario = new List<ScenarioStep>();
+            List<IScenarioStep> scenario = new List<IScenarioStep>();
             scenario.Add(new RegisterStep());
             scenario.Add(new CompleteStep());
             scenario.Add(new GetStateByRangeStep(false, "a", "b"));
@@ -173,7 +237,7 @@ namespace Hyperledger.Fabric.Shim.Tests.FVT
             ChaincodeMessage invokeMsg = MessageUtil.NewEventMessage(ChaincodeMessage.Types.Type.Transaction, "testChannel", "0", invokePayload, null);
 
 
-            List<ScenarioStep> scenario = new List<ScenarioStep>();
+            List<IScenarioStep> scenario = new List<IScenarioStep>();
             scenario.Add(new RegisterStep());
             scenario.Add(new CompleteStep());
             scenario.Add(new GetQueryResultStep(false, "a", "b"));
@@ -215,7 +279,7 @@ namespace Hyperledger.Fabric.Shim.Tests.FVT
             ByteString invokePayload = ci.ToByteString();
             ChaincodeMessage invokeMsg = MessageUtil.NewEventMessage(ChaincodeMessage.Types.Type.Transaction, "testChannel", "0", invokePayload, null);
 
-            List<ScenarioStep> scenario = new List<ScenarioStep>();
+            List<IScenarioStep> scenario = new List<IScenarioStep>();
             scenario.Add(new RegisterStep());
             scenario.Add(new CompleteStep());
             scenario.Add(new GetHistoryForKeyStep(false, "1", "2"));
@@ -247,7 +311,7 @@ namespace Hyperledger.Fabric.Shim.Tests.FVT
             ByteString invokePayload = ci.ToByteString();
             ChaincodeMessage invokeMsg = MessageUtil.NewEventMessage(ChaincodeMessage.Types.Type.Transaction, "testChannel", "0", invokePayload, null);
 
-            List<ScenarioStep> scenario = new List<ScenarioStep>();
+            List<IScenarioStep> scenario = new List<IScenarioStep>();
             scenario.Add(new RegisterStep());
             scenario.Add(new CompleteStep());
             scenario.Add(new InvokeChaincodeStep());
@@ -275,7 +339,7 @@ namespace Hyperledger.Fabric.Shim.Tests.FVT
             ByteString initPayload = ci.ToByteString();
             ChaincodeMessage initMsg = MessageUtil.NewEventMessage(ChaincodeMessage.Types.Type.Init, "testChannel", "0", initPayload, null);
 
-            List<ScenarioStep> scenario = new List<ScenarioStep>();
+            List<IScenarioStep> scenario = new List<IScenarioStep>();
             scenario.Add(new RegisterStep());
             scenario.Add(new ErrorResponseStep());
             scenario.Add(new ErrorResponseStep());
@@ -312,7 +376,7 @@ namespace Hyperledger.Fabric.Shim.Tests.FVT
             ByteString initPayload = ci.ToByteString();
             ChaincodeMessage initMsg = MessageUtil.NewEventMessage(ChaincodeMessage.Types.Type.Init, "testChannel", "0", initPayload, null);
 
-            List<ScenarioStep> scenario = new List<ScenarioStep>();
+            List<IScenarioStep> scenario = new List<IScenarioStep>();
             scenario.Add(new RegisterStep());
             scenario.Add(new CompleteStep());
             server = ChaincodeMockPeer.StartServer(scenario);
@@ -331,7 +395,7 @@ namespace Hyperledger.Fabric.Shim.Tests.FVT
         {
             ChaincodeBase cb = new EmptyChaincode();
 
-            List<ScenarioStep> scenario = new List<ScenarioStep>();
+            List<IScenarioStep> scenario = new List<IScenarioStep>();
             scenario.Add(new RegisterStep());
             scenario.Add(new CompleteStep());
             server = ChaincodeMockPeer.StartServer(scenario);
@@ -357,7 +421,7 @@ namespace Hyperledger.Fabric.Shim.Tests.FVT
             }
             catch (TimeoutException)
             {
-                Assert.Fail("Got timeout, first step not finished");
+                Assert.Fail($"Got timeout, step {step} not finished");
             }
         }
 

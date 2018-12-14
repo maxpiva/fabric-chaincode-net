@@ -33,7 +33,7 @@ namespace Hyperledger.Fabric.Shim.Tests.Mock.Peer
          * @param port     mock peer communication port
          * @throws IOException
          */
-        public ChaincodeMockPeer(List<ScenarioStep> scenario, int port)
+        public ChaincodeMockPeer(List<IScenarioStep> scenario, int port)
         {
             service = new ChaincodeMockPeerService(scenario);
             server = new Server {Services = {ChaincodeSupport.BindService(service)}, Ports = {new ServerPort("127.0.0.1", port, ServerCredentials.Insecure)}};
@@ -104,7 +104,7 @@ namespace Hyperledger.Fabric.Shim.Tests.Mock.Peer
          * @return
          * @throws Exception
          */
-        public static ChaincodeMockPeer StartServer(List<ScenarioStep> scenario)
+        public static ChaincodeMockPeer StartServer(List<IScenarioStep> scenario)
         {
             ChaincodeMockPeer server = new ChaincodeMockPeer(scenario, 7052);
             server.Start();

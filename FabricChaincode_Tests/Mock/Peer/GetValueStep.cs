@@ -15,7 +15,7 @@ namespace Hyperledger.Fabric.Shim.Tests.Mock.Peer
      * Waits for GET_STATE message
      * Returns response message with value as payload
      */
-    public class GetValueStep : ScenarioStep
+    public class GetValueStep : IScenarioStep
     {
         private ChaincodeMessage orgMsg;
         private readonly string val;

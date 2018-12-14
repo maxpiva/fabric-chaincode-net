@@ -14,7 +14,7 @@ namespace Hyperledger.Fabric.Shim.Tests.Mock.Peer
      * Waits for QUERY_STATE_CLOSE
      * Sends back response with empty payload
      */
-    public class QueryCloseStep : ScenarioStep
+    public class QueryCloseStep : IScenarioStep
     {
         private ChaincodeMessage orgMsg;
 

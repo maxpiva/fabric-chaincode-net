@@ -2,7 +2,6 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
-using System.Threading.Tasks;
 using Google.Protobuf;
 using Google.Protobuf.WellKnownTypes;
 using Hyperledger.Fabric.Protos.Common;
@@ -25,7 +24,7 @@ namespace Hyperledger.Fabric.Shim.Tests.Implementation
         private static readonly string TEST_COLLECTION = "testcoll";
 
         private readonly Mock<Handler> handler = new Mock<Handler>(MockBehavior.Loose);
-        private CancellationToken token = default(CancellationToken);
+        private readonly CancellationToken token = default(CancellationToken);
 
         [TestMethod]
         public void TestGetArgs()
@@ -105,8 +104,21 @@ namespace Hyperledger.Fabric.Shim.Tests.Implementation
         {
             ChaincodeStub stub = new ChaincodeStub("myc", "txId", handler.Object, new List<ByteString>(), null);
             byte[] value = new byte[] {0x10, 0x20, 0x30};
-            handler.Setup((a) => a.GetStateAsync("myc", "txId", "", "key",token)).ReturnsAsync(ByteString.CopyFrom(value));
+            handler.Setup((a) => a.GetStateAsync("myc", "txId", "", "key", token)).ReturnsAsync(ByteString.CopyFrom(value));
             CollectionAssert.AreEqual(stub.GetState("key"), value);
+        }
+
+        [TestMethod]
+        public void TestGetStateValidationParameter()
+        {
+            ChaincodeStub stub = new ChaincodeStub("myc", "txId", handler.Object, new List<ByteString>(), null);
+            byte[] value = new byte[] {0x10, 0x20, 0x30};
+            Dictionary<string, ByteString> metaMap = new Dictionary<string, ByteString>();
+            metaMap[ChaincodeStub.VALIDATION_PARAMETER] = ByteString.CopyFrom(value);
+            handler.Setup((a) => a.GetStateMetadataAsync("myc", "txId", "", "key", token)).ReturnsAsync(metaMap);
+            CollectionAssert.AreEqual(stub.GetStateValidationParameter("key"), value);
+            handler.Setup((a) => a.GetStateMetadataAsync("myc", "txId", "", "key2", token)).ReturnsAsync(new Dictionary<string, ByteString>());
+            Assert.IsNull(stub.GetStateValidationParameter("key2"));
         }
 
         [TestMethod]
@@ -114,7 +126,7 @@ namespace Hyperledger.Fabric.Shim.Tests.Implementation
         {
             ChaincodeStub stub = new ChaincodeStub("myc", "txId", handler.Object, new List<ByteString>(), null);
             string value = "TEST";
-            handler.Setup((a) => a.GetStateAsync("myc", "txId", "", "key",token)).ReturnsAsync(ByteString.CopyFromUtf8(value));
+            handler.Setup((a) => a.GetStateAsync("myc", "txId", "", "key", token)).ReturnsAsync(ByteString.CopyFromUtf8(value));
             Assert.AreEqual(stub.GetStringState("key"), value);
         }
 
@@ -124,7 +136,7 @@ namespace Hyperledger.Fabric.Shim.Tests.Implementation
             ChaincodeStub stub = new ChaincodeStub("myc", "txId", handler.Object, new List<ByteString>(), null);
             byte[] value = new byte[] {0x10, 0x20, 0x30};
             stub.PutState("key", value);
-            handler.Verify((a) => a.PutStateAsync("myc", "txId", "", "key", ByteString.CopyFrom(value),token));
+            handler.Verify((a) => a.PutStateAsync("myc", "txId", "", "key", ByteString.CopyFrom(value), token));
             try
             {
                 stub.PutState(null, value);
@@ -147,12 +159,40 @@ namespace Hyperledger.Fabric.Shim.Tests.Implementation
         }
 
         [TestMethod]
-        public void TestStringState()
+        public void TestSetStateValidationParameter()
+        {
+            ChaincodeStub stub = new ChaincodeStub("myc", "txId", handler.Object, new List<ByteString>(), null);
+            byte[] value = new byte[] {0x10, 0x20, 0x30};
+            stub.SetStateValidationParameter("key", value);
+            handler.Verify((a) => a.PutStateMetadataAsync("myc", "txId", "", "key", ChaincodeStub.VALIDATION_PARAMETER, ByteString.CopyFrom(value), token));
+            try
+            {
+                stub.SetStateValidationParameter(null, value);
+                Assert.Fail("Null key check fails");
+            }
+            catch (ArgumentException)
+            {
+                //ignored
+            }
+
+            try
+            {
+                stub.SetStateValidationParameter("", value);
+                Assert.Fail("Empty key check fails");
+            }
+            catch (ArgumentException)
+            {
+                //ignored
+            }
+        }
+
+        [TestMethod]
+        public void TestPutStringState()
         {
             ChaincodeStub stub = new ChaincodeStub("myc", "txId", handler.Object, new List<ByteString>(), null);
             string value = "TEST";
             stub.PutStringState("key", value);
-            handler.Verify((a) => a.PutStateAsync("myc", "txId", "", "key", ByteString.CopyFromUtf8(value),token));
+            handler.Verify((a) => a.PutStateAsync("myc", "txId", "", "key", ByteString.CopyFromUtf8(value), token));
         }
 
         [TestMethod]
@@ -160,7 +200,7 @@ namespace Hyperledger.Fabric.Shim.Tests.Implementation
         {
             ChaincodeStub stub = new ChaincodeStub("myc", "txId", handler.Object, new List<ByteString>(), null);
             stub.DelState("key");
-            handler.Verify((a) => a.DeleteStateAsync("myc", "txId", "", "key",token));
+            handler.Verify((a) => a.DeleteStateAsync("myc", "txId", "", "key", token));
         }
 
         [TestMethod]
@@ -169,13 +209,55 @@ namespace Hyperledger.Fabric.Shim.Tests.Implementation
             ChaincodeStub stub = new ChaincodeStub("myc", "txId", handler.Object, new List<ByteString>(), null);
             string startKey = "START";
             string endKey = "END";
-            KV[] keyValues = new KV[] {new KV {Key = "A", Value = ByteString.CopyFromUtf8("Value of A")}, new KV {Key = "B", Value = ByteString.CopyFromUtf8("Value of B")}};
-            QueryResponse value = new QueryResponse {HasMore = false};
-            value.Results.Add(new QueryResultBytes {ResultBytes = keyValues[0].ToByteString()});
-            value.Results.Add(new QueryResultBytes {ResultBytes = keyValues[1].ToByteString()});
-            handler.Setup((a) => a.GetStateByRangeAsync("myc", "txId", "", startKey, endKey,token)).ReturnsAsync(value);
+            KV[] keyValues = PrepareKeyValuePairs(2);
+            QueryResponse value = PrepareQueryResponseForRange(keyValues, false);
+            handler.Setup((a) => a.GetStateByRangeAsync("myc", "txId", "", startKey, endKey, null, token)).ReturnsAsync(value);
             Assert.That.Contains(stub.GetStateByRange(startKey, endKey), keyValues.Select(a => new KeyValue(a)));
         }
+
+        [TestMethod]
+        public void TestGetStateByRangeWithPagination()
+        {
+            ChaincodeStub stub = new ChaincodeStub("myc", "txId", handler.Object, new List<ByteString>(), null);
+            string startKey = "START";
+            string endKey = "END";
+            KV[] keyValues = PrepareKeyValuePairs(2);
+            QueryResponse value = PrepareQueryResponseForRange(keyValues, true);
+
+
+            QueryMetadata queryMetadata = new QueryMetadata {Bookmark = "aaaa", PageSize = 1};
+
+            handler.Setup((a) => a.GetStateByRangeAsync("myc", "txId", "", startKey, endKey, queryMetadata.ToByteString(), token)).ReturnsAsync(value);
+            IQueryResultsEnumerable<IKeyValue> queryResultsIterator = stub.GetStateByRangeWithPagination(startKey, endKey, 1, "aaaa");
+            Assert.That.Contains(queryResultsIterator, keyValues.Select(a => new KeyValue(a)));
+            Assert.AreEqual(queryResultsIterator.GetMetadata().FetchedRecordsCount, 2);
+            Assert.AreEqual(queryResultsIterator.GetMetadata().Bookmark, "bbbb");
+        }
+
+        private KV[] PrepareKeyValuePairs(int count)
+        {
+            KV[] keyValue = new KV[count];
+            for (int i = 0; i < count; i++)
+            {
+                keyValue[i] = new KV {Key = "Key" + i, Value = ByteString.CopyFromUtf8("Value of Key" + i)};
+            }
+
+            return keyValue;
+        }
+
+        private QueryResponse PrepareQueryResponseForRange(KV[] keyValues, bool createMetadata)
+        {
+            QueryResponse qr = new QueryResponse {HasMore = false};
+            qr.Results.AddRange(keyValues.Select(a => new QueryResultBytes {ResultBytes = a.ToByteString()}));
+            if (createMetadata)
+            {
+                QueryResponseMetadata qrm = new QueryResponseMetadata {Bookmark = "bbbb", FetchedRecordsCount = 2};
+                qr.Metadata = qrm.ToByteString();
+            }
+
+            return qr;
+        }
+
 
         [TestMethod]
         public void TestGetStateByPartialCompositeKey()
@@ -183,10 +265,10 @@ namespace Hyperledger.Fabric.Shim.Tests.Implementation
             ChaincodeStub stub = PrepareStubAndMockHandler();
             stub.GetStateByPartialCompositeKey("KEY").First();
             string key = new CompositeKey("KEY").ToString();
-            handler.Verify(a => a.GetStateByRangeAsync("myc", "txId", "", key, key + "\udbff\udfff",token));
+            handler.Verify(a => a.GetStateByRangeAsync("myc", "txId", "", key, key + "\udbff\udfff", null, token));
             stub.GetStateByPartialCompositeKey("").First();
             key = new CompositeKey("").ToString();
-            handler.Verify(a => a.GetStateByRangeAsync("myc", "txId", "", key, key + "\udbff\udfff",token));
+            handler.Verify(a => a.GetStateByRangeAsync("myc", "txId", "", key, key + "\udbff\udfff", null, token));
         }
 
         [TestMethod]
@@ -195,7 +277,7 @@ namespace Hyperledger.Fabric.Shim.Tests.Implementation
             ChaincodeStub stub = PrepareStubAndMockHandler();
             CompositeKey cKey = new CompositeKey("KEY", "attr1", "attr2");
             stub.GetStateByPartialCompositeKey(cKey.ToString()).First();
-            handler.Verify(a => a.GetStateByRangeAsync("myc", "txId", "", cKey.ToString(), cKey.ToString() + "\udbff\udfff",token));
+            handler.Verify(a => a.GetStateByRangeAsync("myc", "txId", "", cKey.ToString(), cKey.ToString() + "\udbff\udfff", null, token));
         }
 
         [TestMethod]
@@ -204,7 +286,7 @@ namespace Hyperledger.Fabric.Shim.Tests.Implementation
             ChaincodeStub stub = PrepareStubAndMockHandler();
             CompositeKey cKey = new CompositeKey("KEY", "attr1", "attr2", "attr3");
             stub.GetStateByPartialCompositeKey("KEY", "attr1", "attr2", "attr3").First();
-            handler.Verify(a => a.GetStateByRangeAsync("myc", "txId", "", cKey.ToString(), cKey.ToString() + "\udbff\udfff",token));
+            handler.Verify(a => a.GetStateByRangeAsync("myc", "txId", "", cKey.ToString(), cKey.ToString() + "\udbff\udfff", null, token));
         }
 
         [TestMethod]
@@ -214,20 +296,55 @@ namespace Hyperledger.Fabric.Shim.Tests.Implementation
 
             CompositeKey key = new CompositeKey("KEY");
             stub.GetStateByPartialCompositeKey(key).First();
-            handler.Verify(a => a.GetStateByRangeAsync("myc", "txId", "", key.ToString(), key.ToString() + "\udbff\udfff",token));
+            handler.Verify(a => a.GetStateByRangeAsync("myc", "txId", "", key.ToString(), key.ToString() + "\udbff\udfff", null, token));
             key = new CompositeKey("");
             stub.GetStateByPartialCompositeKey(key).First();
-            handler.Verify(a => a.GetStateByRangeAsync("myc", "txId", "", key.ToString(), key.ToString() + "\udbff\udfff",token));
+            handler.Verify(a => a.GetStateByRangeAsync("myc", "txId", "", key.ToString(), key.ToString() + "\udbff\udfff", null, token));
+        }
+
+        [TestMethod]
+        public void TestGetStateByPartialCompositeKeyWithPagination()
+        {
+            QueryMetadata queryMetadata = new QueryMetadata {Bookmark = "aaaa", PageSize = 1};
+
+            ChaincodeStub stub = PrepareStubAndMockHandler(true, queryMetadata.ToByteString());
+
+            CompositeKey key = new CompositeKey("KEY");
+            IQueryResultsEnumerable<IKeyValue> queryResultsIterator = stub.GetStateByPartialCompositeKeyWithPagination(key, 1, "aaaa");
+            queryResultsIterator.First(); //Otherwise GetStateByRangeAsync will not be executed, that Or GetMetadata()
+            handler.Verify(a => a.GetStateByRangeAsync("myc", "txId", "", key.ToString(), key.ToString() + "\udbff\udfff", queryMetadata.ToByteString(), It.IsAny<CancellationToken>()));
+            Assert.AreEqual(queryResultsIterator.GetMetadata().FetchedRecordsCount, 2);
+            Assert.AreEqual(queryResultsIterator.GetMetadata().Bookmark, "bbbb");
+
+
+            key = new CompositeKey("");
+            queryResultsIterator = stub.GetStateByPartialCompositeKeyWithPagination(key, 1, "aaaa");
+            queryResultsIterator.First(); //Otherwise GetStateByRangeAsync will not be executed, that Or GetMetadata()
+
+            handler.Verify(a => a.GetStateByRangeAsync("myc", "txId", "", key.ToString(), key.ToString() + "\udbff\udfff", queryMetadata.ToByteString(), It.IsAny<CancellationToken>()));
+            Assert.AreEqual(queryResultsIterator.GetMetadata().FetchedRecordsCount, 2);
+            Assert.AreEqual(queryResultsIterator.GetMetadata().Bookmark, "bbbb");
         }
 
         private ChaincodeStub PrepareStubAndMockHandler()
         {
+            return PrepareStubAndMockHandler(false, null);
+        }
+
+        private ChaincodeStub PrepareStubAndMockHandler(bool createMetadata, ByteString metadata)
+        {
             ChaincodeStub stub = new ChaincodeStub("myc", "txId", handler.Object, new List<ByteString>(), null);
-            KV[] keyValues = new KV[] {new KV {Key = "A", Value = ByteString.CopyFromUtf8("Value of A")}, new KV {Key = "B", Value = ByteString.CopyFromUtf8("Value of B")}};
+            KV[] keyValues = PrepareKeyValuePairs(2);
+
             QueryResponse value = new QueryResponse {HasMore = false};
-            value.Results.Add(new QueryResultBytes {ResultBytes = keyValues[0].ToByteString()});
-            value.Results.Add(new QueryResultBytes {ResultBytes = keyValues[1].ToByteString()});
-            handler.Setup((a) => a.GetStateByRangeAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(),token)).ReturnsAsync(value);
+            value.Results.AddRange(keyValues.Select(a => new QueryResultBytes {ResultBytes = a.ToByteString()}));
+            if (createMetadata)
+            {
+                QueryResponseMetadata qrm = new QueryResponseMetadata {Bookmark = "bbbb", FetchedRecordsCount = 2};
+                value.Metadata = qrm.ToByteString();
+            }
+
+            handler.Setup((a) => a.GetStateByRangeAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.Is<ByteString>(b=>(b==null && metadata ==null) || (b.Equals(metadata))), token)).ReturnsAsync(value);
             return stub;
         }
 
@@ -259,7 +376,7 @@ namespace Hyperledger.Fabric.Shim.Tests.Implementation
             QueryResponse value = new QueryResponse {HasMore = false};
             value.Results.Add(new QueryResultBytes {ResultBytes = keyValues[0].ToByteString()});
             value.Results.Add(new QueryResultBytes {ResultBytes = keyValues[1].ToByteString()});
-            handler.Setup((a) => a.GetQueryResultAsync("myc", "txId", "", "QUERY",token)).ReturnsAsync(value);
+            handler.Setup((a) => a.GetQueryResultAsync("myc", "txId", "", "QUERY", null, token)).ReturnsAsync(value);
             Assert.That.Contains(stub.GetQueryResult("QUERY"), keyValues.Select(a => new KeyValue(a)));
         }
 
@@ -272,7 +389,7 @@ namespace Hyperledger.Fabric.Shim.Tests.Implementation
             QueryResponse value = new QueryResponse {HasMore = false};
             value.Results.Add(new QueryResultBytes {ResultBytes = ByteString.CopyFromUtf8("exception")});
 
-            handler.Setup((a) => a.GetQueryResultAsync(channelId, txId, "", query,token)).ReturnsAsync(value);
+            handler.Setup((a) => a.GetQueryResultAsync(channelId, txId, "", query, null, token)).ReturnsAsync(value);
             try
             {
                 stub.GetQueryResult(query).First();
@@ -296,7 +413,7 @@ namespace Hyperledger.Fabric.Shim.Tests.Implementation
             value.Results.Add(new QueryResultBytes {ResultBytes = keyValues[0].ToByteString()});
             value.Results.Add(new QueryResultBytes {ResultBytes = keyValues[1].ToByteString()});
 
-            handler.Setup((a) => a.GetHistoryForKeyAsync("myc", "txId", "KEY",token)).ReturnsAsync(value);
+            handler.Setup((a) => a.GetHistoryForKeyAsync("myc", "txId", "KEY", token)).ReturnsAsync(value);
             Assert.That.Contains(stub.GetHistoryForKey("KEY"), keyValues.Select(a => new Shim.Implementation.KeyModification(a)));
         }
 
@@ -305,7 +422,7 @@ namespace Hyperledger.Fabric.Shim.Tests.Implementation
         {
             ChaincodeStub stub = new ChaincodeStub("myc", "txId", handler.Object, new List<ByteString>(), null);
             byte[] value = new byte[] {0x10, 0x20, 0x30};
-            handler.Setup(a => a.GetStateAsync("myc", "txId", "testcoll", "key",token)).ReturnsAsync(ByteString.CopyFrom(value));
+            handler.Setup(a => a.GetStateAsync("myc", "txId", "testcoll", "key", token)).ReturnsAsync(ByteString.CopyFrom(value));
             CollectionAssert.AreEqual(stub.GetPrivateData("testcoll", "key"), value);
             try
             {
@@ -333,8 +450,43 @@ namespace Hyperledger.Fabric.Shim.Tests.Implementation
         {
             ChaincodeStub stub = new ChaincodeStub("myc", "txId", handler.Object, new List<ByteString>(), null);
             string value = "TEST";
-            handler.Setup(a => a.GetStateAsync("myc", "txId", "testcoll", "key",token)).ReturnsAsync(ByteString.CopyFromUtf8(value));
+            handler.Setup(a => a.GetStateAsync("myc", "txId", "testcoll", "key", token)).ReturnsAsync(ByteString.CopyFromUtf8(value));
             Assert.AreEqual(stub.GetPrivateDataUTF8("testcoll", "key"), value);
+        }
+
+        [TestMethod]
+        public void TestGetPrivateDataValidationParameter()
+        {
+            ChaincodeStub stub = new ChaincodeStub("myc", "txId", handler.Object, new List<ByteString>(), null);
+            byte[] value = new byte[] {0x10, 0x20, 0x30};
+            Dictionary<string, ByteString> metaMap = new Dictionary<string, ByteString>();
+            metaMap[ChaincodeStub.VALIDATION_PARAMETER] = ByteString.CopyFrom(value);
+
+            handler.Setup(a => a.GetStateMetadataAsync("myc", "txId", "testcoll", "key", token)).ReturnsAsync(metaMap);
+            CollectionAssert.AreEqual(stub.GetPrivateDataValidationParameter("testcoll", "key"), value);
+
+            handler.Setup(a => a.GetStateMetadataAsync("myc", "txId", "testcoll", "key2", token)).ReturnsAsync(new Dictionary<string, ByteString>());
+            Assert.IsNull(stub.GetPrivateDataValidationParameter("testcoll", "key2"));
+
+            try
+            {
+                stub.GetPrivateDataValidationParameter(null, "key");
+                Assert.Fail("Null collection check fails");
+            }
+            catch (ArgumentException)
+            {
+                //ignored
+            }
+
+            try
+            {
+                stub.GetPrivateDataValidationParameter("", "key");
+                Assert.Fail("Empty collection check fails");
+            }
+            catch (ArgumentException)
+            {
+                //ignored
+            }
         }
 
         [TestMethod]
@@ -343,7 +495,7 @@ namespace Hyperledger.Fabric.Shim.Tests.Implementation
             ChaincodeStub stub = new ChaincodeStub("myc", "txId", handler.Object, new List<ByteString>(), null);
             byte[] value = new byte[] {0x10, 0x20, 0x30};
             stub.PutPrivateData("testcoll", "key", value);
-            handler.Verify(a => a.PutStateAsync("myc", "txId", "testcoll", "key", ByteString.CopyFrom(value),token));
+            handler.Verify(a => a.PutStateAsync("myc", "txId", "testcoll", "key", ByteString.CopyFrom(value), token));
             try
             {
                 stub.PutPrivateData(null, "key", value);
@@ -391,7 +543,56 @@ namespace Hyperledger.Fabric.Shim.Tests.Implementation
             ChaincodeStub stub = new ChaincodeStub("myc", "txId", handler.Object, new List<ByteString>(), null);
             string value = "TEST";
             stub.PutPrivateData("testcoll", "key", value);
-            handler.Verify(a => a.PutStateAsync("myc", "txId", "testcoll", "key", ByteString.CopyFromUtf8(value),token));
+            handler.Verify(a => a.PutStateAsync("myc", "txId", "testcoll", "key", ByteString.CopyFromUtf8(value), token));
+        }
+
+        [TestMethod]
+        public void TestSetPrivateDataValidationParameter()
+        {
+            ChaincodeStub stub = new ChaincodeStub("myc", "txId", handler.Object, new List<ByteString>(), null);
+            byte[] value = new byte[] {0x10, 0x20, 0x30};
+            //handler.Setup(a => a.PutStateMetadataAsync("myc", "txId", "testcoll", "key", ChaincodeStub.VALIDATION_PARAMETER, ByteString.CopyFrom(value), token));
+            stub.SetPrivateDataValidationParameter("testcoll", "key", value);
+            handler.Verify(a => a.PutStateMetadataAsync("myc", "txId", "testcoll", "key", ChaincodeStub.VALIDATION_PARAMETER, ByteString.CopyFrom(value), token));
+            try
+            {
+                stub.SetPrivateDataValidationParameter(null, "key", value);
+                Assert.Fail("Null collection check fails");
+            }
+            catch (ArgumentException)
+            {
+                //Ignore
+            }
+
+            try
+            {
+                stub.SetPrivateDataValidationParameter("", "key", value);
+                Assert.Fail("Empty collection check fails");
+            }
+            catch (ArgumentException)
+            {
+                //Ignore
+            }
+
+            try
+            {
+                stub.SetPrivateDataValidationParameter("testcoll", null, value);
+                Assert.Fail("Null key check fails");
+            }
+            catch (ArgumentException)
+            {
+                //Ignore
+            }
+
+            try
+            {
+                stub.SetPrivateDataValidationParameter("testcoll", "", value);
+                Assert.Fail("Empty key check fails");
+            }
+            catch (ArgumentException)
+            {
+                //Ignore
+            }
         }
 
         [TestMethod]
@@ -399,7 +600,7 @@ namespace Hyperledger.Fabric.Shim.Tests.Implementation
         {
             ChaincodeStub stub = new ChaincodeStub("myc", "txId", handler.Object, new List<ByteString>(), null);
             stub.DelPrivateData("testcoll", "key");
-            handler.Verify(a => a.DeleteStateAsync("myc", "txId", "testcoll", "key",token));
+            handler.Verify(a => a.DeleteStateAsync("myc", "txId", "testcoll", "key", token));
             try
             {
                 stub.DelPrivateData(null, "key");
@@ -431,7 +632,7 @@ namespace Hyperledger.Fabric.Shim.Tests.Implementation
             QueryResponse value = new QueryResponse {HasMore = false};
             value.Results.Add(new QueryResultBytes {ResultBytes = keyValues[0].ToByteString()});
             value.Results.Add(new QueryResultBytes {ResultBytes = keyValues[1].ToByteString()});
-            handler.Setup(a => a.GetStateByRangeAsync("myc", "txId", "testcoll", startKey, endKey,token)).ReturnsAsync(value);
+            handler.Setup(a => a.GetStateByRangeAsync("myc", "txId", "testcoll", startKey, endKey, null, token)).ReturnsAsync(value);
             Assert.That.Contains(stub.GetPrivateDataByRange("testcoll", startKey, endKey), keyValues.Select(a => new KeyValue(a)));
 
             try
@@ -462,11 +663,11 @@ namespace Hyperledger.Fabric.Shim.Tests.Implementation
 
             CompositeKey key = new CompositeKey("KEY");
             stub.GetPrivateDataByPartialCompositeKey(TEST_COLLECTION, "KEY").First();
-            handler.Verify(a => a.GetStateByRangeAsync("myc", "txId", TEST_COLLECTION, key.ToString(), key.ToString() + "\udbff\udfff",token));
+            handler.Verify(a => a.GetStateByRangeAsync("myc", "txId", TEST_COLLECTION, key.ToString(), key.ToString() + "\udbff\udfff", null, token));
             key = new CompositeKey("");
             stub.GetPrivateDataByPartialCompositeKey(TEST_COLLECTION, (string) null).First();
             stub.GetPrivateDataByPartialCompositeKey(TEST_COLLECTION, "").First();
-            handler.Verify(a => a.GetStateByRangeAsync("myc", "txId", TEST_COLLECTION, key.ToString(), key.ToString() + "\udbff\udfff",token), Times.AtLeast(2));
+            handler.Verify(a => a.GetStateByRangeAsync("myc", "txId", TEST_COLLECTION, key.ToString(), key.ToString() + "\udbff\udfff", null, token), Times.AtLeast(2));
         }
 
         [TestMethod]
@@ -475,7 +676,7 @@ namespace Hyperledger.Fabric.Shim.Tests.Implementation
             ChaincodeStub stub = PrepareStubAndMockHandler();
             CompositeKey cKey = new CompositeKey("KEY", "attr1", "attr2");
             stub.GetPrivateDataByPartialCompositeKey(TEST_COLLECTION, cKey.ToString()).First();
-            handler.Verify(a => a.GetStateByRangeAsync("myc", "txId", TEST_COLLECTION, cKey.ToString(), cKey.ToString() + "\udbff\udfff",token));
+            handler.Verify(a => a.GetStateByRangeAsync("myc", "txId", TEST_COLLECTION, cKey.ToString(), cKey.ToString() + "\udbff\udfff", null, token));
         }
 
         [TestMethod]
@@ -484,7 +685,7 @@ namespace Hyperledger.Fabric.Shim.Tests.Implementation
             ChaincodeStub stub = PrepareStubAndMockHandler();
             CompositeKey cKey = new CompositeKey("KEY", "attr1", "attr2", "attr3");
             stub.GetPrivateDataByPartialCompositeKey(TEST_COLLECTION, "KEY", "attr1", "attr2", "attr3").First(); //GetFirst Otherwise no deal
-            handler.Verify(a => a.GetStateByRangeAsync("myc", "txId", TEST_COLLECTION, cKey.ToString(), cKey.ToString() + "\udbff\udfff",token));
+            handler.Verify(a => a.GetStateByRangeAsync("myc", "txId", TEST_COLLECTION, cKey.ToString(), cKey.ToString() + "\udbff\udfff", null, token));
         }
 
         [TestMethod]
@@ -494,11 +695,11 @@ namespace Hyperledger.Fabric.Shim.Tests.Implementation
 
             CompositeKey key = new CompositeKey("KEY");
             stub.GetPrivateDataByPartialCompositeKey(TEST_COLLECTION, key).First();
-            handler.Verify(a => a.GetStateByRangeAsync("myc", "txId", TEST_COLLECTION, key.ToString(), key.ToString() + "\udbff\udfff",token));
+            handler.Verify(a => a.GetStateByRangeAsync("myc", "txId", TEST_COLLECTION, key.ToString(), key.ToString() + "\udbff\udfff", null, token));
 
             key = new CompositeKey("");
             stub.GetPrivateDataByPartialCompositeKey(TEST_COLLECTION, key).First();
-            handler.Verify(a => a.GetStateByRangeAsync("myc", "txId", TEST_COLLECTION, key.ToString(), key.ToString() + "\udbff\udfff",token));
+            handler.Verify(a => a.GetStateByRangeAsync("myc", "txId", TEST_COLLECTION, key.ToString(), key.ToString() + "\udbff\udfff", null, token));
         }
 
         [TestMethod]
@@ -509,7 +710,7 @@ namespace Hyperledger.Fabric.Shim.Tests.Implementation
             QueryResponse value = new QueryResponse {HasMore = false};
             value.Results.Add(new QueryResultBytes {ResultBytes = keyValues[0].ToByteString()});
             value.Results.Add(new QueryResultBytes {ResultBytes = keyValues[1].ToByteString()});
-            handler.Setup(a => a.GetQueryResultAsync("myc", "txId", "testcoll", "QUERY", token)).ReturnsAsync(value);
+            handler.Setup(a => a.GetQueryResultAsync("myc", "txId", "testcoll", "QUERY", null, token)).ReturnsAsync(value);
 
             Assert.That.Contains(stub.GetPrivateDataQueryResult("testcoll", "QUERY"), keyValues.Select(a => new KeyValue(a)));
 
@@ -542,7 +743,7 @@ namespace Hyperledger.Fabric.Shim.Tests.Implementation
             ChaincodeStub stub = new ChaincodeStub("myc", "txId", handler.Object, new List<ByteString>(), null);
             QueryResponse value = new QueryResponse {HasMore = false};
             value.Results.Add(new QueryResultBytes {ResultBytes = ByteString.CopyFromUtf8("exception")});
-            handler.Setup(a => a.GetQueryResultAsync(channelId, txId, "testcoll", query,token)).ReturnsAsync(value);
+            handler.Setup(a => a.GetQueryResultAsync(channelId, txId, "testcoll", query, null, token)).ReturnsAsync(value);
             try
             {
                 stub.GetPrivateDataQueryResult("testcoll", query).First();
@@ -567,7 +768,7 @@ namespace Hyperledger.Fabric.Shim.Tests.Implementation
             QueryResponse value = new QueryResponse {HasMore = false};
             value.Results.Add(new QueryResultBytes {ResultBytes = ByteString.CopyFromUtf8("exception")});
 
-            handler.Setup(a => a.GetHistoryForKeyAsync(channelId, txId, key,token)).ReturnsAsync(value);
+            handler.Setup(a => a.GetHistoryForKeyAsync(channelId, txId, key, token)).ReturnsAsync(value);
             try
             {
                 stub.GetHistoryForKey(key).First();
@@ -588,7 +789,7 @@ namespace Hyperledger.Fabric.Shim.Tests.Implementation
             string txId = "txId", chaincodeName = "CHAINCODE_ID", channel = "CHAINCODE_CHANNEL";
             ChaincodeStub stub = new ChaincodeStub(channel, txId, handler.Object, new List<ByteString>(), null);
             Response expectedResponse = new Response(Status.SUCCESS, "MESSAGE", "PAYLOAD".ToBytes());
-            handler.Setup(a => a.InvokeChaincodeAsync(channel, txId, chaincodeName, new List<byte[]>(),token)).ReturnsAsync(expectedResponse);
+            handler.Setup(a => a.InvokeChaincodeAsync(channel, txId, chaincodeName, new List<byte[]>(), token)).ReturnsAsync(expectedResponse);
             Assert.AreEqual(stub.InvokeChaincode(chaincodeName, new List<byte[]>()), expectedResponse);
             handler.Setup(a => a.InvokeChaincodeAsync(It.Is<string>(b => b == channel), It.Is<string>(b => b == txId), It.Is<string>(b => b == chaincodeName + "/" + channel), It.IsAny<List<byte[]>>(), token)).ReturnsAsync(expectedResponse);
             Assert.AreEqual(stub.InvokeChaincode(chaincodeName, new List<byte[]>(), channel), expectedResponse);
@@ -601,10 +802,10 @@ namespace Hyperledger.Fabric.Shim.Tests.Implementation
             ChaincodeStub stub = new ChaincodeStub(channel, txId, handler.Object, new List<ByteString>(), null);
             Response expectedResponse = new Response(Status.SUCCESS, "MESSAGE", "PAYLOAD".ToBytes());
 
-            handler.Setup(a => a.InvokeChaincodeAsync(channel, txId, chaincodeName, new List<byte[]>(),token)).ReturnsAsync(expectedResponse);
+            handler.Setup(a => a.InvokeChaincodeAsync(channel, txId, chaincodeName, new List<byte[]>(), token)).ReturnsAsync(expectedResponse);
             Assert.AreEqual(stub.InvokeChaincodeWithStringArgs(chaincodeName), expectedResponse);
 
-            handler.Setup(a => a.InvokeChaincodeAsync(channel, txId, chaincodeName, new List<byte[]>(),token)).ReturnsAsync(expectedResponse);
+            handler.Setup(a => a.InvokeChaincodeAsync(channel, txId, chaincodeName, new List<byte[]>(), token)).ReturnsAsync(expectedResponse);
             Assert.AreEqual(stub.InvokeChaincodeWithStringArgs(chaincodeName, new List<string>()), expectedResponse);
 
             handler.Setup(a => a.InvokeChaincodeAsync(It.Is<string>(b => b == channel), It.Is<string>(b => b == txId), It.Is<string>(b => b == chaincodeName + "/" + channel), It.IsAny<List<byte[]>>(), token)).ReturnsAsync(expectedResponse);
@@ -673,7 +874,7 @@ namespace Hyperledger.Fabric.Shim.Tests.Implementation
 
             SignedProposal signedProposal = new SignedProposal {ProposalBytes = new Proposal {Header = new Header {ChannelHeader = new ChannelHeader {Type = (int) HeaderType.EndorserTransaction, Timestamp = new Timestamp()}.ToByteString(),}.ToByteString(), Payload = payload.ToByteString()}.ToByteString()};
             ChaincodeStub stub = new ChaincodeStub("myc", "txId", handler.Object, new List<ByteString>(), signedProposal);
-            Assert.That.ContainsDictionary<string,byte[],byte>(stub.Transient, new Dictionary<string, byte[]> {{"key0", "value0".ToBytes()}, {"key1", "value1".ToBytes()}});
+            Assert.That.ContainsDictionary<string, byte[], byte>(stub.Transient, new Dictionary<string, byte[]> {{"key0", "value0".ToBytes()}, {"key1", "value1".ToBytes()}});
         }
 
         [TestMethod]

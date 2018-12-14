@@ -276,7 +276,22 @@ namespace Hyperledger.Fabric.Shim.Implementation
         {
             return InvokeChaincodeSupportAsync(NewGetStateEventMessage(channelId, txId, collection, key), token);
         }
-
+        public virtual async Task<Dictionary<string,ByteString>> GetStateMetadataAsync(string channelId, string txId, string collection, string key, CancellationToken token = default(CancellationToken))
+        {
+            ByteString payload = await InvokeChaincodeSupportAsync(NewGetStateMetadataEventMessage(channelId, txId, collection, key), token).ConfigureAwait(false);
+            try
+            {
+                StateMetadataResult stateMetadataResult = StateMetadataResult.Parser.ParseFrom(payload);
+                Dictionary<string, ByteString> stateMetadataMap = new Dictionary<string, ByteString>();
+                stateMetadataResult.Entries.ToList().ForEach(a=>stateMetadataMap.Add(a.Metakey,a.Value));
+                return stateMetadataMap;
+            }
+            catch (InvalidProtocolBufferException e)
+            {
+                logger.Error($"[{txId},-8] unmarshall error");
+                throw new Exception("Error unmarshalling StateMetadataResult.", e);
+            }
+        }
         private bool IsTransaction(string channelId, string uuid)
         {
             string key = GetTxKey(channelId, uuid);
@@ -290,7 +305,12 @@ namespace Hyperledger.Fabric.Shim.Implementation
                 throw new InvalidOperationException("Cannot put state in query context");
             return InvokeChaincodeSupportAsync(NewPutStateEventMessage(channelId, txId, collection, key, value), token);
         }
-
+        public virtual Task PutStateMetadataAsync(string channelId, string txId, string collection, string key, string metakey, ByteString value, CancellationToken token = default(CancellationToken))
+        {
+            if (!IsTransaction(channelId, txId))
+                throw new InvalidOperationException("Cannot put state metadata in query context");
+            return InvokeChaincodeSupportAsync(NewPutStateMatadateEventMessage(channelId, txId, collection, key, metakey, value),token);
+        }
         public virtual Task DeleteStateAsync(string channelId, string txId, string collection, string key, CancellationToken token = default(CancellationToken))
         {
             if (!IsTransaction(channelId, txId))
@@ -298,9 +318,12 @@ namespace Hyperledger.Fabric.Shim.Implementation
             return InvokeChaincodeSupportAsync(NewDeleteStateEventMessage(channelId, txId, collection, key), token);
         }
 
-        public virtual Task<QueryResponse> GetStateByRangeAsync(string channelId, string txId, string collection, string startKey, string endKey, CancellationToken token = default(CancellationToken))
+        public virtual Task<QueryResponse> GetStateByRangeAsync(string channelId, string txId, string collection, string startKey, string endKey, ByteString metadata, CancellationToken token = default(CancellationToken))
         {
-            return InvokeQueryResponseMessageAsync(channelId, txId, ChaincodeMessage.Types.Type.GetStateByRange, new GetStateByRange {StartKey = startKey, EndKey = endKey, Collection = collection}.ToByteString(), token);
+            GetStateByRange gsr=new GetStateByRange { Collection = collection, StartKey = startKey, EndKey = endKey};
+            if (metadata!=null)
+                gsr.Metadata=metadata;
+            return InvokeQueryResponseMessageAsync(channelId, txId, ChaincodeMessage.Types.Type.GetStateByRange, gsr.ToByteString(), token);
         }
 
         public Task<QueryResponse> QueryStateNextAsync(string channelId, string txId, string queryId, CancellationToken token = default(CancellationToken))
@@ -313,9 +336,12 @@ namespace Hyperledger.Fabric.Shim.Implementation
             return InvokeQueryResponseMessageAsync(channelId, txId, ChaincodeMessage.Types.Type.QueryStateClose, new QueryStateClose {Id = queryId}.ToByteString(), token);
         }
 
-        public virtual Task<QueryResponse> GetQueryResultAsync(string channelId, string txId, string collection, string query, CancellationToken token = default(CancellationToken))
+        public virtual Task<QueryResponse> GetQueryResultAsync(string channelId, string txId, string collection, string query, ByteString metadata, CancellationToken token = default(CancellationToken))
         {
-            return InvokeQueryResponseMessageAsync(channelId, txId, ChaincodeMessage.Types.Type.GetQueryResult, new GetQueryResult {Query = query, Collection = collection}.ToByteString(), token);
+            GetQueryResult gsr = new GetQueryResult { Query = query, Collection = collection };
+            if (metadata != null)
+                gsr.Metadata = metadata;
+            return InvokeQueryResponseMessageAsync(channelId, txId, ChaincodeMessage.Types.Type.GetQueryResult, gsr.ToByteString(), token);
         }
 
         public virtual Task<QueryResponse> GetHistoryForKeyAsync(string channelId, string txId, string key, CancellationToken token = default(CancellationToken))
@@ -414,12 +440,24 @@ namespace Hyperledger.Fabric.Shim.Implementation
         {
             return NewEventMessage(ChaincodeMessage.Types.Type.GetState, channelId, txId, new GetState {Key = key, Collection = collection}.ToByteString());
         }
+        private static ChaincodeMessage NewGetStateMetadataEventMessage(string channelId, string txId, string collection, string key)
+        {
+            return NewEventMessage(ChaincodeMessage.Types.Type.GetStateMetadata, channelId, txId, new GetStateMetadata { Key = key, Collection = collection}.ToByteString());
+        }
 
         private static ChaincodeMessage NewPutStateEventMessage(string channelId, string txId, string collection, string key, ByteString value)
         {
             return NewEventMessage(ChaincodeMessage.Types.Type.PutState, channelId, txId, new PutState {Key = key, Value = value, Collection = collection}.ToByteString());
         }
-
+        private static ChaincodeMessage NewPutStateMatadateEventMessage(string channelId, string txId, string collection, string key, string metakey, ByteString value)
+        {
+            return NewEventMessage(ChaincodeMessage.Types.Type.PutStateMetadata, channelId, txId, new PutStateMetadata {
+                Key =key, Collection = collection,
+                Metadata = new StateMetadata
+                {
+                    Metakey = metakey,  Value = value
+                } }.ToByteString());
+        }
         private static ChaincodeMessage NewDeleteStateEventMessage(string channelId, string txId, string collection, string key)
         {
             return NewEventMessage(ChaincodeMessage.Types.Type.DelState, channelId, txId, new DelState {Key = key, Collection = collection}.ToByteString());

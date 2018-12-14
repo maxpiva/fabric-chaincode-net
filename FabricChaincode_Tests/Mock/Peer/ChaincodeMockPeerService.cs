@@ -14,7 +14,7 @@ namespace Hyperledger.Fabric.Shim.Tests.Mock.Peer
         private int lastExecutedStepNumber;
         private ChaincodeMessage lastMessageRcvd;
         private ChaincodeMessage lastMessageSend;
-        private readonly List<ScenarioStep> scenario;
+        private readonly List<IScenarioStep> scenario;
         IServerStreamWriter<ChaincodeMessage>  writer;
 
         public int LastExecutedStep => lastExecutedStepNumber;
@@ -26,7 +26,7 @@ namespace Hyperledger.Fabric.Shim.Tests.Mock.Peer
             lastMessageSend = msg;
             writer.WriteAsync(msg).RunAndUnwrap();
         }
-        public ChaincodeMockPeerService(List<ScenarioStep> scenario)
+        public ChaincodeMockPeerService(List<IScenarioStep> scenario)
         {
             this.scenario = scenario;
             lastExecutedStepNumber = 0;
@@ -50,7 +50,7 @@ namespace Hyperledger.Fabric.Shim.Tests.Mock.Peer
                     lastMessageRcvd = chaincodeMessage;
                     if (scenario.Count > 0)
                     {
-                        ScenarioStep step = scenario[0];
+                        IScenarioStep step = scenario[0];
                         scenario.RemoveAt(0);
                         if (step.Expected(chaincodeMessage))
                         {
@@ -62,8 +62,12 @@ namespace Hyperledger.Fabric.Shim.Tests.Mock.Peer
                                 await responseStream.WriteAsync(m).ConfigureAwait(false);
                             }
                         }
+                        else
+                        {
+                            logger.Warn($"Non expected message rcvd in step {step.GetType().Name}");
+                        }
 
-                        lastExecutedStepNumber++;
+                    lastExecutedStepNumber++;
                     }
                 }
             }

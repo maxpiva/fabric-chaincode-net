@@ -14,7 +14,7 @@ namespace Hyperledger.Fabric.Shim.Tests.Mock.Peer
     /**
      * Error message from chaincode side, no response sent
      */
-    public class ErrorResponseStep : ScenarioStep {
+    public class ErrorResponseStep : IScenarioStep {
 
 
     public bool Expected(ChaincodeMessage msg)

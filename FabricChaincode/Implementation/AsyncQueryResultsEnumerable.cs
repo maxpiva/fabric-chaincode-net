@@ -4,14 +4,17 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Google.Protobuf;
 using Hyperledger.Fabric.Protos.Peer;
 using Hyperledger.Fabric.Shim.Helper;
 using Hyperledger.Fabric.Shim.Ledger;
+using Hyperledger.Fabric.Shim.Logging;
+
 #pragma warning disable 693
 
 namespace Hyperledger.Fabric.Shim.Implementation
 {
-    public class AsyncQueryResultsEnumerable<T> : IAsyncQueryResultsEnumerable<T> where T : class
+    public class AsyncQueryResultsEnumerable<T> : IAsyncQueryResultsEnumerable<T> 
     {
         //Full async (need C# 8)
         //Support caching (multiple enumerators can consume, without re-requesting the peer).
@@ -30,7 +33,10 @@ namespace Hyperledger.Fabric.Shim.Implementation
             return new CachedEnumerator<T>(cache);
         }
 
-
+        public Task<QueryResponseMetadata> GetMetadataAsync(CancellationToken cancellationToken = default(CancellationToken))
+        {
+            return new CachedEnumerator<T>(cache).GetMetadataAsync(cancellationToken);
+        }
 
         public void Dispose()
         {
@@ -46,7 +52,7 @@ namespace Hyperledger.Fabric.Shim.Implementation
             return new QueryResultEnumerable<T>(this);
         }
 
-        internal class QueryResultEnumerable<T> : IQueryResultsEnumerable<T> where T : class
+        internal class QueryResultEnumerable<T> : IQueryResultsEnumerable<T> 
         {
             private readonly AsyncQueryResultsEnumerable<T> original;
 
@@ -65,6 +71,10 @@ namespace Hyperledger.Fabric.Shim.Implementation
                 }
             }
 
+            public QueryResponseMetadata GetMetadata()
+            {
+                return original.GetMetadataAsync().RunAndUnwrap();
+            }
             IEnumerator IEnumerable.GetEnumerator()
             {
                 return GetEnumerator();
@@ -76,28 +86,47 @@ namespace Hyperledger.Fabric.Shim.Implementation
             }
         }
 
-        internal class Cache<T> : IDisposable where T : class
+        internal class Cache<T> : IDisposable 
         {
             private int currentpos = -1;
             private readonly AsyncEnumerator<T> en;
             private readonly List<T> Obtained = new List<T>();
-
+            private QueryResponseMetadata metadata;
+            private static readonly ILog logger = LogProvider.GetLogger(typeof(Cache<T>));
             public Cache(AsyncEnumerator<T> en)
             {
                 this.en = en;
             }
 
+            public async Task<QueryResponseMetadata> GetMetadataAsync(CancellationToken cancellationToken)
+            {
+                if (en.firstReponse == null)
+                    await GetAsync(0, cancellationToken).ConfigureAwait(false);
+                if (en.firstReponse != null)
+                {
+                    try
+                    {
+                        metadata = QueryResponseMetadata.Parser.ParseFrom(en.firstReponse.Metadata);
+                    }
+                    catch (InvalidProtocolBufferException)
+                    {
+                        logger.Warn("can't parse response metadata");
+                        throw;
+                    }
+                }
+                return metadata;
+            }
             public void Dispose()
             {
                 en?.Dispose();
             }
 
-            public async Task<T> GetAsync(int pos, CancellationToken cancellationToken)
+            public async Task<(bool,T)> GetAsync(int pos, CancellationToken cancellationToken)
             {
                 if (pos == -1)
-                    return null;
+                    return (false, default(T));
                 if (Obtained.Count < pos)
-                    return Obtained[pos];
+                    return (true,Obtained[pos]);
                 while (currentpos < pos)
                 {
                     if (await en.MoveNext(cancellationToken).ConfigureAwait(false))
@@ -106,14 +135,14 @@ namespace Hyperledger.Fabric.Shim.Implementation
                         currentpos++;
                     }
                     else
-                        return null;
+                        return (false, default(T));
                 }
 
-                return Obtained[pos];
+                return (true,Obtained[pos]);
             }
         }
 
-        internal class CachedEnumerator<T> : IAsyncEnumerator<T> where T : class
+        internal class CachedEnumerator<T> : IAsyncEnumerator<T> 
         {
             private readonly Cache<T> cache;
             private int cnt = -1;
@@ -126,12 +155,17 @@ namespace Hyperledger.Fabric.Shim.Implementation
             public void Dispose()
             {
             }
-
+            public Task<QueryResponseMetadata> GetMetadataAsync(CancellationToken cancellationToken=default(CancellationToken))
+            {
+                return cache.GetMetadataAsync(cancellationToken);
+            }
             public async Task<bool> MoveNext(CancellationToken cancellationToken)
             {
                 cnt++;
-                Current = await cache.GetAsync(cnt, cancellationToken).ConfigureAwait(false);
-                return Current != null;
+                (bool avail, T current)= await cache.GetAsync(cnt, cancellationToken).ConfigureAwait(false);
+                if (avail)
+                    Current = current;
+                return avail;
             }
 
             public T Current { get; private set; }
@@ -147,8 +181,8 @@ namespace Hyperledger.Fabric.Shim.Implementation
             private QueryResultBytes[] currentIterator;
             private int currentpos = -1;
             private QueryResponse currentQueryResponse;
+            internal QueryResponse firstReponse;
             private bool disposed;
-
             public AsyncEnumerator(Handler handler, string channelId, string txId, Func<CancellationToken, Task<QueryResponse>> query, Func<QueryResultBytes, T> mapper)
             {
                 this.handler = handler;
@@ -157,7 +191,7 @@ namespace Hyperledger.Fabric.Shim.Implementation
                 this.query = query;
                 this.mapper = mapper;
             }
-
+      
             public void Dispose() //Microsoft, where is the async Disposable?
             {
                 if (!disposed)
@@ -177,6 +211,7 @@ namespace Hyperledger.Fabric.Shim.Implementation
                 {
                     currentpos = -1;
                     currentQueryResponse = await query(token).ConfigureAwait(false);
+                    firstReponse = currentQueryResponse;
                     currentIterator = currentQueryResponse.Results.ToArray();
                 }
 

@@ -12,7 +12,7 @@ using Hyperledger.Fabric.Protos.Peer;
 
 namespace Hyperledger.Fabric.Shim.Tests.Mock.Peer
 {
-    public class GetHistoryForKeyStep : ScenarioStep
+    public class GetHistoryForKeyStep : IScenarioStep
     {
         private readonly bool hasNext;
         private ChaincodeMessage orgMsg;

@@ -14,7 +14,7 @@ namespace Hyperledger.Fabric.Shim.Tests.Mock.Peer
      * Simulates putState() invocation in chaincode
      * Waits for PUT_STATE message from chaincode, including value and sends back response with empty payload
      */
-    public class PutValueStep : ScenarioStep
+    public class PutValueStep : IScenarioStep
     {
         private readonly string val;
         private ChaincodeMessage orgMsg;

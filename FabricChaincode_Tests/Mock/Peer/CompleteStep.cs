@@ -12,7 +12,7 @@ namespace Hyperledger.Fabric.Shim.Tests.Mock.Peer
     /**
      * Waits for COMPLETED message, sends nothing back
      */
-    public class CompleteStep : ScenarioStep
+    public class CompleteStep : IScenarioStep
     {
         public bool Expected(ChaincodeMessage msg)
         {

@@ -25,6 +25,7 @@ namespace Hyperledger.Fabric.Shim.Implementation
         private static readonly string UNSPECIFIED_KEY = char.ConvertFromUtf32(1);
         public static readonly string MAX_UNICODE_RUNE = "\udbff\udfff";
 
+        public const string VALIDATION_PARAMETER = "VALIDATION_PARAMETER"; 
 
         private readonly IReadOnlyList<ByteString> args;
         private readonly Handler handler;
@@ -132,13 +133,24 @@ namespace Hyperledger.Fabric.Shim.Implementation
 
         public async Task<byte[]> GetStateAsync(string key, CancellationToken token=default(CancellationToken)) => (await handler.GetStateAsync(ChannelId, TxId, "", key,token).ConfigureAwait(false)).ToByteArray();
 
-
+        public async Task<byte[]> GetStateValidationParameterAsync(string key, CancellationToken token = default(CancellationToken))
+        {
+            Dictionary<string, ByteString> metadata = await handler.GetStateMetadataAsync(ChannelId, TxId, "", key, token).ConfigureAwait(false);
+            //Hardcoded, not sure if ToString Will get it the right 
+            if (metadata.ContainsKey(VALIDATION_PARAMETER))
+                return metadata[VALIDATION_PARAMETER].ToByteArray();
+            return null;
+        }
         public Task PutStateAsync(string key, byte[] value, CancellationToken token = default(CancellationToken))
         {
             ValidateKey(key);
             return handler.PutStateAsync(ChannelId, TxId,"", key, ByteString.CopyFrom(value), token);
         }
-
+        public Task SetStateValidationParameterAsync(string key, byte[] value, CancellationToken token = default(CancellationToken))
+        {
+            ValidateKey(key);
+            return handler.PutStateMetadataAsync(ChannelId, TxId, "", key, VALIDATION_PARAMETER, ByteString.CopyFrom(value),token);
+        }
 
         public Task DelStateAsync(string key, CancellationToken token = default(CancellationToken))
         {
@@ -166,7 +178,14 @@ namespace Hyperledger.Fabric.Shim.Implementation
 
             return ExecuteGetStateByRange("", cKeyAsString, cKeyAsString + MAX_UNICODE_RUNE);
         }
-
+        public async Task<byte[]> GetPrivateDataValidationParameterAsync(string collection, string key, CancellationToken token = default(CancellationToken))
+        {
+            ValidateCollection(collection);
+            Dictionary<string, ByteString> metadata = await handler.GetStateMetadataAsync(ChannelId, TxId, collection, key, token).ConfigureAwait(false);
+            if (metadata.ContainsKey(VALIDATION_PARAMETER))
+                return metadata[VALIDATION_PARAMETER].ToByteArray();
+            return null;
+        }
 
         public virtual async Task<byte[]> GetPrivateDataAsync(string collection, string key, CancellationToken token=default(CancellationToken))
         {
@@ -180,6 +199,12 @@ namespace Hyperledger.Fabric.Shim.Implementation
             ValidateKey(key);
             ValidateCollection(collection);
             return handler.PutStateAsync(ChannelId, TxId, collection, key, ByteString.CopyFrom(value), token);
+        }
+        public Task SetPrivateDataValidationParameterAsync(string collection, string key, byte[] value, CancellationToken token = default(CancellationToken))
+        {
+            ValidateKey(key);
+            ValidateCollection(collection);
+            return handler.PutStateMetadataAsync(ChannelId,TxId, collection, key, VALIDATION_PARAMETER, ByteString.CopyFrom(value), token);
         }
 
 
@@ -230,7 +255,7 @@ namespace Hyperledger.Fabric.Shim.Implementation
         {
             ValidateCollection(collection);
             return new AsyncQueryResultsEnumerable<IKeyValue>(handler, ChannelId, TxId, 
-                token=>handler.GetQueryResultAsync(ChannelId, TxId, collection, query,token),
+                token=>handler.GetQueryResultAsync(ChannelId, TxId, collection, query,null, token),
                 (qv) => new KeyValue(KV.Parser.ParseFrom(qv.ResultBytes)));
         }
 
@@ -282,17 +307,46 @@ namespace Hyperledger.Fabric.Shim.Implementation
         private IAsyncQueryResultsEnumerable<IKeyValue> ExecuteGetStateByRange(string collection, string startKey, string endKey)
         {
             return new AsyncQueryResultsEnumerable<IKeyValue>(handler, ChannelId, TxId,
-                (token)=>handler.GetStateByRangeAsync(ChannelId, TxId, collection, startKey, endKey,token),
+                (token)=>handler.GetStateByRangeAsync(ChannelId, TxId, collection, startKey, endKey,null,token),
                 (qv) => new KeyValue(KV.Parser.ParseFrom(qv.ResultBytes)));
         }
 
+        public IAsyncQueryResultsEnumerable<IKeyValue> GetStateByRangeWithPaginationAsync(string startKey, string endKey, int pageSize, string bookmark)
+        {
+            if (string.IsNullOrEmpty(startKey))
+                startKey = UNSPECIFIED_KEY;
+            if (string.IsNullOrEmpty(endKey))
+                endKey = UNSPECIFIED_KEY;
 
+            CompositeKey.ValidateSimpleKeys(startKey, endKey);
+
+            QueryMetadata queryMetadata = new QueryMetadata { Bookmark = bookmark, PageSize = pageSize};
+            
+            return ExecuteGetStateByRangeWithMetadata("", startKey, endKey, queryMetadata.ToByteString());
+        }
+
+        private IAsyncQueryResultsEnumerable<IKeyValue> ExecuteGetStateByRangeWithMetadata(string collection, string startKey, string endKey, ByteString metadata)
+        {
+            return new AsyncQueryResultsEnumerable<IKeyValue>(handler,ChannelId,TxId,
+                (token)=>handler.GetStateByRangeAsync(ChannelId,TxId,collection,startKey,endKey,metadata, token),
+                qv=> new KeyValue(KV.Parser.ParseFrom(qv.ResultBytes)));
+        }
         public IAsyncQueryResultsEnumerable<IKeyValue> GetStateByPartialCompositeKeyAsync(string compositeKey)
         {
             CompositeKey key = compositeKey.StartsWith(CompositeKey.NAMESPACE) ? CompositeKey.ParseCompositeKey(compositeKey) : new CompositeKey(compositeKey);
             return GetStateByPartialCompositeKeyAsync(key);
         }
+        public IAsyncQueryResultsEnumerable<IKeyValue> GetStateByPartialCompositeKeyWithPaginationAsync(CompositeKey compositeKey, int pageSize, string bookmark)
+        {
+            if (compositeKey == null)
+                compositeKey = new CompositeKey(UNSPECIFIED_KEY);
 
+            string cKeyAsString = compositeKey.ToString();
+
+            QueryMetadata queryMetadata = new QueryMetadata { Bookmark = bookmark, PageSize = pageSize };
+
+            return ExecuteGetStateByRangeWithMetadata("", cKeyAsString, cKeyAsString + MAX_UNICODE_RUNE, queryMetadata.ToByteString());
+        }
 
         public CompositeKey CreateCompositeKey(string objectType, params string[] attributes)
         {
@@ -309,9 +363,17 @@ namespace Hyperledger.Fabric.Shim.Implementation
         public IAsyncQueryResultsEnumerable<IKeyValue> GetQueryResultAsync(string query)
         {
             return new AsyncQueryResultsEnumerable<IKeyValue>(handler, ChannelId, TxId, 
-                token=>handler.GetQueryResultAsync(ChannelId, TxId,"", query,token),
+                token=>handler.GetQueryResultAsync(ChannelId, TxId,"", query,null, token),
                 (qv) => new KeyValue(KV.Parser.ParseFrom(qv.ResultBytes)));
         }
+        public IAsyncQueryResultsEnumerable<IKeyValue> GetQueryResultWithPaginationAsync(string query, int pageSize, string bookmark)
+        {
+            QueryMetadata queryMetadata = new QueryMetadata { Bookmark = bookmark, PageSize = pageSize };
+            return new AsyncQueryResultsEnumerable<IKeyValue>(handler, ChannelId, TxId,
+                (token) => handler.GetQueryResultAsync(ChannelId, TxId, "",query, queryMetadata.ToByteString(),token),
+                qv => new KeyValue(KV.Parser.ParseFrom(qv.ResultBytes)));
+        }
+
 
         // ReSharper disable once ParameterOnlyUsedForPreconditionCheck.Local
         private void ValidateKey(string key)

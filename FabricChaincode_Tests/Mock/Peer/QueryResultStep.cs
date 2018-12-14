@@ -15,7 +15,7 @@ namespace Hyperledger.Fabric.Shim.Tests.Mock.Peer
 /*
  * Base class for multi result query steps/messages
  */
-    public abstract class QueryResultStep : ScenarioStep
+    public abstract class QueryResultStep : IScenarioStep
     {
         private readonly bool hasNext;
         internal ChaincodeMessage orgMsg;

@@ -9,7 +9,7 @@ using Hyperledger.Fabric.Protos.Peer;
 
 namespace Hyperledger.Fabric.Shim.Tests.Mock.Peer
 {
-    public interface ScenarioStep
+    public interface IScenarioStep
     {
         /** Validate incoming message from chaincode side
          *

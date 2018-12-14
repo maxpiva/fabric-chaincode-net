@@ -13,7 +13,7 @@ namespace Hyperledger.Fabric.Shim.Tests.Mock.Peer
      * Simulates delState() invocation in chaincode
      * Waits for DEL_STATE message from chaincode and sends back response with empty payload
      */
-    public class DelValueStep : ScenarioStep
+    public class DelValueStep : IScenarioStep
     {
         private ChaincodeMessage orgMsg;
 

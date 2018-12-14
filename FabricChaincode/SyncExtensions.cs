@@ -36,15 +36,22 @@ namespace Hyperledger.Fabric.Shim
         public static void PutPrivateData(this IChaincodeStub stub, string collection, string key, string value) => stub.PutPrivateDataAsync(collection, key, value).RunAndUnwrap();
         public static string GetPrivateDataUTF8(this IChaincodeStub stub, string collection, string key) => stub.GetPrivateDataUTF8Async(collection, key).RunAndUnwrap();
         public static void PutStringState(this IChaincodeStub stub, string key, string value) => stub.PutStringStateAsync(key, value).RunAndUnwrap();
+        public static byte[] GetStateValidationParameter(this IChaincodeStub stub, string key) => stub.GetStateValidationParameterAsync(key).RunAndUnwrap();
+        public static void SetStateValidationParameter(this IChaincodeStub stub, string key, byte[] value) => stub.SetStateValidationParameterAsync(key, value).RunAndUnwrap();
+        public static IQueryResultsEnumerable<IKeyValue> GetStateByRangeWithPagination(this IChaincodeStub stub, string startKey, string endKey, int pageSize, string bookmark) => stub.GetStateByRangeWithPaginationAsync(startKey, endKey, pageSize, bookmark).ToSyncEnumerable();
+        public static IQueryResultsEnumerable<IKeyValue> GetStateByPartialCompositeKeyWithPagination(this IChaincodeStub stub, CompositeKey compositeKey, int pageSize, string bookmark) => stub.GetStateByPartialCompositeKeyWithPaginationAsync(compositeKey, pageSize, bookmark).ToSyncEnumerable();
+        public static IQueryResultsEnumerable<IKeyValue> GetQueryResultWithPagination(this IChaincodeStub stub, string query, int pageSize, string bookmark) => stub.GetQueryResultWithPaginationAsync(query, pageSize, bookmark).ToSyncEnumerable();
+        public static byte[] GetPrivateDataValidationParameter(this IChaincodeStub stub, string collection, string key) => stub.GetPrivateDataValidationParameterAsync(collection, key).RunAndUnwrap();
+        public static void SetPrivateDataValidationParameter(this IChaincodeStub stub, string collection, string key, byte[] value) => stub.SetPrivateDataValidationParameterAsync(collection, key, value).RunAndUnwrap();
 
 
         public static ByteString GetState(this Handler handler, string channelId, string txId, string collection, string key) => handler.GetStateAsync(channelId, txId, collection, key).RunAndUnwrap();
         public static void PutState(this Handler handler, string channelId, string txId, string collection, string key, ByteString value) => handler.PutStateAsync(channelId, txId, collection, key, value).RunAndUnwrap();
         public static void DeleteState(this Handler handler, string channelId, string txId, string collection, string key) => handler.DeleteStateAsync(channelId, txId, collection, key).RunAndUnwrap();
-        public static QueryResponse GetStateByRange(this Handler handler, string channelId, string txId, string collection, string startKey, string endKey) => handler.GetStateByRangeAsync(channelId, txId, collection, startKey, endKey).RunAndUnwrap();
+        public static QueryResponse GetStateByRange(this Handler handler, string channelId, string txId, string collection, string startKey, string endKey, ByteString metadata) => handler.GetStateByRangeAsync(channelId, txId, collection, startKey, endKey, metadata).RunAndUnwrap();
         public static QueryResponse QueryStateNext(this Handler handler, string channelId, string txId, string queryId) => handler.QueryStateNextAsync(channelId, txId, queryId).RunAndUnwrap();
         public static QueryResponse QueryStateClose(this Handler handler, string channelId, string txId, string queryId) => handler.QueryStateCloseAsync(channelId, txId, queryId).RunAndUnwrap();
-        public static QueryResponse GetQueryResult(this Handler handler, string channelId, string txId, string collection, string query) => handler.GetQueryResultAsync(channelId, txId, collection, query).RunAndUnwrap();
+        public static QueryResponse GetQueryResult(this Handler handler, string channelId, string txId, string collection, string query, ByteString metadata) => handler.GetQueryResultAsync(channelId, txId, collection, query, metadata).RunAndUnwrap();
         public static QueryResponse GetHistoryForKey(this Handler handler, string channelId, string txId, string key) => handler.GetHistoryForKeyAsync(channelId, txId, key).RunAndUnwrap();
         public static Response InvokeChaincode(this Handler handler, string channelId, string txId, string chaincodeName, List<byte[]> args) => handler.InvokeChaincodeAsync(channelId, txId, chaincodeName, args).RunAndUnwrap();
     }

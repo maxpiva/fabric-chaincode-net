@@ -15,7 +15,7 @@ namespace Hyperledger.Fabric.Shim.Tests.Mock.Peer
      * Waits for INVOKE_CHAINCODE
      * Sends back RESPONSE message with chaincode response inside
      */
-    public class InvokeChaincodeStep : ScenarioStep
+    public class InvokeChaincodeStep : IScenarioStep
     {
         private ChaincodeMessage orgMsg;
 
