@@ -1,5 +1,6 @@
 ﻿using System.Collections.Generic;
 using System.Threading;
+using System.Threading.Tasks;
 using Google.Protobuf;
 using Hyperledger.Fabric.Protos.Peer;
 using Hyperledger.Fabric.Shim.Helper;
@@ -43,6 +44,7 @@ namespace Hyperledger.Fabric.Shim
         public static IQueryResultsEnumerable<IKeyValue> GetQueryResultWithPagination(this IChaincodeStub stub, string query, int pageSize, string bookmark) => stub.GetQueryResultWithPaginationAsync(query, pageSize, bookmark).ToSyncEnumerable();
         public static byte[] GetPrivateDataValidationParameter(this IChaincodeStub stub, string collection, string key) => stub.GetPrivateDataValidationParameterAsync(collection, key).RunAndUnwrap();
         public static void SetPrivateDataValidationParameter(this IChaincodeStub stub, string collection, string key, byte[] value) => stub.SetPrivateDataValidationParameterAsync(collection, key, value).RunAndUnwrap();
+        public static void StartAndBlock(this ChaincodeBaseAsync cba, string[] args) => cba.StartAndBlockAsync(args).RunAndUnwrap();
         public static void Start(this ChaincodeBaseAsync cba, string[] args) => cba.StartAsync(args).RunAndUnwrap();
 
         public static ByteString GetState(this Handler handler, string channelId, string txId, string collection, string key) => handler.GetStateAsync(channelId, txId, collection, key).RunAndUnwrap();

@@ -183,7 +183,12 @@ namespace Hyperledger.Fabric.Shim
             logger.Info("CORE_TLS_CLIENT_CERT_PATH" + (TlsClientCertPath ?? ""));
         }
 
-        public async Task StartAsync(string[] args, CancellationToken token = default(CancellationToken))
+        public Task StartAsync(string[] args, CancellationToken token = default(CancellationToken))
+        {
+            Task.Run(async () => await StartAndBlockAsync(args, token), token).ConfigureAwait(false);
+            return Task.FromResult(0);
+        }
+        public async Task StartAndBlockAsync(string[] args, CancellationToken token = default(CancellationToken))
         {
             exitSource = CancellationTokenSource.CreateLinkedTokenSource(token);
             AppDomain.CurrentDomain.ProcessExit += ProcessExit;
