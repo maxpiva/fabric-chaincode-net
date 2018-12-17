@@ -21,14 +21,15 @@ Help is appreciated since i'm not proficient in GO language
 **TidBits**
 
 * Users can inherit ChaincodeBaseAsync for async implementations or ChaincodeBase for sync ones.
-* Users can inherit ChaincodeBaseMapperAsync or ChainCodeBaseMapper for automapping, you only need to implements the functions with the format:
+* Users can inherit ChaincodeBaseMapperAsync or ChaincodeBaseMapper for automapping, you only need to implements the functions with the format:
+
   *Response **FunctionName**(IChaincodeStub stub)* or 
-  *Task<Response> **FunctionName**Async(IChaincodeStub stub, CancellationToken token)* in case of async usage.
+
+  *Task\<Response\> **FunctionName**Async(IChaincodeStub stub, CancellationToken token)* in case of async usage.
 * Added FunctionName attribute for the above defined methods. in case your implementation name differs from the chaincode function.
 * C# 8 is required. Since it uses new C# 8 IAsyncEnumerable
 
 TODO:
-* Currently, SHIM handles SIGTERM, SIGINT, etc. But since chaincode start, in fact spawn a thread. a normal Main on chaincode will end and kill the thread, via app exit if not blocked. So a hosting facility may need to be included in ChaincodeBase.
 * Examples
-
+* Docker builds
 
