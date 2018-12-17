@@ -13,8 +13,9 @@ using System.Threading.Tasks;
 using Google.Protobuf;
 using Hyperledger.Fabric.Protos.Peer;
 using Hyperledger.Fabric.Shim.Helper;
-using Hyperledger.Fabric.Shim.Logging;
+
 using Nito.AsyncEx;
+using Serilog;
 
 [assembly: InternalsVisibleTo("DynamicProxyGenAssembly2")]
 
@@ -22,8 +23,8 @@ namespace Hyperledger.Fabric.Shim.Implementation
 {
     public class Handler
     {
-        private static readonly ILog logger = LogProvider.GetLogger(typeof(Handler));
-
+        private static readonly ILogger logger = Log.ForContext<Handler>();
+        
 
         private readonly Dictionary<string, bool> isTransaction = new Dictionary<string, bool>();
         private readonly AsyncProducerConsumerQueue<ChaincodeMessage> outboundChaincodeMessages = new AsyncProducerConsumerQueue<ChaincodeMessage>();
@@ -56,7 +57,7 @@ namespace Hyperledger.Fabric.Shim.Implementation
 
         public Task OnChaincodeMessageAsync(ChaincodeMessage chaincodeMessage, CancellationToken token)
         {
-            logger.Trace($"[{chaincodeMessage.Txid,-8}s] {chaincodeMessage.ToJsonString()}");
+            logger.Debug($"[{chaincodeMessage.Txid,-8}s] {chaincodeMessage.ToJsonString()}");
             return HandleChaincodeMessageAsync(chaincodeMessage, token);
         }
 
@@ -65,7 +66,7 @@ namespace Hyperledger.Fabric.Shim.Implementation
             logger.Debug($"[{message.Txid,-8}s] Handling ChaincodeMessage of type: {message.Type}, handler state {State}");
             if (message.Type == ChaincodeMessage.Types.Type.Keepalive)
             {
-                logger.Trace($"[{message.Txid,-8}s] Received KEEPALIVE: nothing to do");
+                logger.Debug($"[{message.Txid,-8}s] Received KEEPALIVE: nothing to do");
                 return;
             }
 
@@ -81,7 +82,7 @@ namespace Hyperledger.Fabric.Shim.Implementation
                     await HandleReadyAsync(message, token).ConfigureAwait(false);
                     break;
                 default:
-                    logger.Warn($"[{message.Txid,-8}s] Received {message.Type}: cannot handle");
+                    logger.Warning($"[{message.Txid,-8}s] Received {message.Type}: cannot handle");
                     break;
             }
         }
@@ -91,10 +92,10 @@ namespace Hyperledger.Fabric.Shim.Implementation
             if (message.Type == ChaincodeMessage.Types.Type.Registered)
             {
                 State = CCState.ESTABLISHED;
-                logger.Trace($"[{message.Txid,-8}s] Received REGISTERED: moving to established state");
+                logger.Debug($"[{message.Txid,-8}s] Received REGISTERED: moving to established state");
             }
             else
-                logger.Warn($"[{message.Txid,-8}s] Received {message.Type}: cannot handle");
+                logger.Warning($"[{message.Txid,-8}s] Received {message.Type}: cannot handle");
         }
 
         private void HandleEstablished(ChaincodeMessage message)
@@ -102,10 +103,10 @@ namespace Hyperledger.Fabric.Shim.Implementation
             if (message.Type == ChaincodeMessage.Types.Type.Ready)
             {
                 State = CCState.READY;
-                logger.Trace($"[{message.Txid,-8}s] Received READY: ready for invocations");
+                logger.Debug($"[{message.Txid,-8}s] Received READY: ready for invocations");
             }
             else
-                logger.Warn($"[{message.Txid,-8}s] Received {message.Type}: cannot handle");
+                logger.Warning($"[{message.Txid,-8}s] Received {message.Type}: cannot handle");
         }
 
         private Task HandleReadyAsync(ChaincodeMessage message, CancellationToken token)
@@ -113,19 +114,19 @@ namespace Hyperledger.Fabric.Shim.Implementation
             switch (message.Type)
             {
                 case ChaincodeMessage.Types.Type.Response:
-                    logger.Trace($"[{message.Txid,-8}s] Received RESPONSE: publishing to channel");
+                    logger.Debug($"[{message.Txid,-8}s] Received RESPONSE: publishing to channel");
                     return SendChannelAsync(message, token);
                 case ChaincodeMessage.Types.Type.Error:
-                    logger.Trace($"[{message.Txid,-8}s] Received ERROR: publishing to channel");
+                    logger.Debug($"[{message.Txid,-8}s] Received ERROR: publishing to channel");
                     return SendChannelAsync(message, token);
                 case ChaincodeMessage.Types.Type.Init:
-                    logger.Trace($"[{message.Txid,-8}s] Received INIT: invoking chaincode init");
+                    logger.Debug($"[{message.Txid,-8}s] Received INIT: invoking chaincode init");
                     return HandleInitAsync(message, token);
                 case ChaincodeMessage.Types.Type.Transaction:
-                    logger.Trace($"[{message.Txid,-8}s] Received TRANSACTION: invoking chaincode");
+                    logger.Debug($"[{message.Txid,-8}s] Received TRANSACTION: invoking chaincode");
                     return HandleTransactionAsync(message, token);
                 default:
-                    logger.Warn($"[{message.Txid,-8}s] Received {message.Type}: cannot handle");
+                    logger.Warning($"[{message.Txid,-8}s] Received {message.Type}: cannot handle");
                     return Task.FromResult(0);
             }
         }
@@ -148,7 +149,7 @@ namespace Hyperledger.Fabric.Shim.Implementation
                     throw new InvalidOperationException($"[{txId,-8}]Response channel already exists. Another request must be pending.");
                 responseChannel.Add(key, channel);
             }
-            logger.Trace($"[{txId,-8}]Response channel created.");
+            logger.Debug($"[{txId,-8}]Response channel created.");
             return channel;
         }
 
@@ -180,7 +181,7 @@ namespace Hyperledger.Fabric.Shim.Implementation
                 responseChannel.Remove(key);
             }
 
-            logger.Trace($"[{txId},-8]Response channel closed.");
+            logger.Debug($"[{txId},-8]Response channel closed.");
         }
 
         /**
@@ -252,13 +253,13 @@ namespace Hyperledger.Fabric.Shim.Implementation
                     else
                     {
                         // Send COMPLETED with entire result as payload
-                        logger.Trace($"[{message.Txid},-8]Init succeeded. Sending {ChaincodeMessage.Types.Type.Completed}");
+                        logger.Debug($"[{message.Txid},-8]Init succeeded. Sending {ChaincodeMessage.Types.Type.Completed}");
                         await QueueOutboundChaincodeMessageAsync(NewCompletedEventMessage(message.ChannelId, message.Txid, result, stub.Event), token).ConfigureAwait(false);
                     }
                 }
                 catch (Exception e)
                 {
-                    logger.ErrorException($"[{message.Txid},-8]Init failed. Sending {ChaincodeMessage.Types.Type.Error}", e);
+                    logger.Error(e,$"[{message.Txid},-8]Init failed. Sending {ChaincodeMessage.Types.Type.Error}");
                     await QueueOutboundChaincodeMessageAsync(NewErrorEventMessage(message.ChannelId, message.Txid, e), token).ConfigureAwait(false);
                 }
                 finally
@@ -300,7 +301,7 @@ namespace Hyperledger.Fabric.Shim.Implementation
 
         public virtual Task PutStateAsync(string channelId, string txId, string collection, string key, ByteString value, CancellationToken token = default(CancellationToken))
         {
-            logger.Trace($"[{txId,-8}]Inside putstate (\"{collection}\":\"{key}\":\"{value}\"), isTransaction = {IsTransaction(channelId, txId)}");
+            logger.Debug($"[{txId,-8}]Inside putstate (\"{collection}\":\"{key}\":\"{value}\"), isTransaction = {IsTransaction(channelId, txId)}");
             if (!IsTransaction(channelId, txId))
                 throw new InvalidOperationException("Cannot put state in query context");
             return InvokeChaincodeSupportAsync(NewPutStateEventMessage(channelId, txId, collection, key, value), token);
@@ -377,13 +378,13 @@ namespace Hyperledger.Fabric.Shim.Implementation
 
                 // wait for response
                 ChaincodeMessage response = await ReceiveChannelAsync(respChannel, token).ConfigureAwait(false);
-                logger.Trace($"[{txId},-8]{response.Type} response received.");
+                logger.Debug($"[{txId},-8]{response.Type} response received.");
 
                 // handle response
                 switch (response.Type)
                 {
                     case ChaincodeMessage.Types.Type.Response:
-                        logger.Trace($"[{txId},-8]Successful response received.");
+                        logger.Debug($"[{txId},-8]Successful response received.");
                         return response.Payload;
                     case ChaincodeMessage.Types.Type.Error:
                         string error = $"[{txId},-8]Unsuccessful response received.";
@@ -414,7 +415,7 @@ namespace Hyperledger.Fabric.Shim.Implementation
                 // message (the actual response message)
                 ChaincodeMessage responseMessage = ChaincodeMessage.Parser.ParseFrom(payload);
                 // the actual response message must be of type COMPLETED
-                logger.Trace($"[{txId},-8]{responseMessage.Type} response received from other chaincode.");
+                logger.Debug($"[{txId},-8]{responseMessage.Type} response received from other chaincode.");
                 if (responseMessage.Type == ChaincodeMessage.Types.Type.Completed)
                 {
                     // success

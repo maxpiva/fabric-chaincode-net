@@ -10,7 +10,8 @@ using System.Linq;
 using Google.Protobuf;
 using Hyperledger.Fabric.Protos.Common;
 using Hyperledger.Fabric.Shim.Helper;
-using Hyperledger.Fabric.Shim.Logging;
+
+using Serilog;
 
 namespace Hyperledger.Fabric.Shim.Ext.Sbe.Implementation
 {
@@ -19,7 +20,7 @@ namespace Hyperledger.Fabric.Shim.Ext.Sbe.Implementation
      */
     public class StateBasedEndorsement : IStateBasedEndorsement
     {
-        private static readonly ILog logger = LogProvider.GetLogger(typeof(StateBasedEndorsement));
+        private static readonly ILogger logger = Log.ForContext<StateBasedEndorsement>();
         private readonly Dictionary<string, MSPRole.Types.MSPRoleType> orgs = new Dictionary<string, MSPRole.Types.MSPRoleType>();
 
         public StateBasedEndorsement(byte[] ep)
@@ -92,7 +93,7 @@ namespace Hyperledger.Fabric.Shim.Ext.Sbe.Implementation
             }
             catch (InvalidProtocolBufferException e)
             {
-                logger.Warn("error unmarshaling msp principal");
+                logger.Warning("error unmarshaling msp principal");
                 throw new ArgumentException("error unmarshaling msp principal", e);
             }
         }

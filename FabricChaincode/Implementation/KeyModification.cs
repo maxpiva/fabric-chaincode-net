@@ -50,7 +50,6 @@ namespace Hyperledger.Fabric.Shim.Implementation
 
         public bool Equals(KeyModification obj)
         {
-            if (this == obj) return true;
             if (obj == null) return false;
             if (IsDeleted != obj.IsDeleted) return false;
             if (!Timestamp.Equals(obj.Timestamp)) return false;

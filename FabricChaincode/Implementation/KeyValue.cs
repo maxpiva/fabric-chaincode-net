@@ -41,7 +41,6 @@ namespace Hyperledger.Fabric.Shim.Implementation
 
         public bool Equals(KeyValue other)
         {
-            if (this == other) return true;
             if (other == null) return false;
             if (!Key.Equals(other.Key)) return false;
             if (!value.Equals(other.value)) return false;

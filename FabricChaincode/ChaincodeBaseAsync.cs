@@ -16,19 +16,26 @@ limitations under the License.
 
 using System;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Grpc.Core;
 using Hyperledger.Fabric.Shim.Helper;
 using Hyperledger.Fabric.Shim.Implementation;
-using Hyperledger.Fabric.Shim.Logging;
 using Mono.Options;
+using Serilog;
+using Serilog.Core;
+using Serilog.Events;
+
 
 namespace Hyperledger.Fabric.Shim
 {
     public abstract class ChaincodeBaseAsync : IChaincodeAsync, IDisposable
     {
-        private static readonly ILog logger = LogProvider.GetLogger(typeof(ChaincodeBaseAsync));
+
+
+
+        private static readonly ILogger logger = Log.ForContext<ChaincodeBaseAsync>();
         public static readonly string CORE_CHAINCODE_LOGGING_SHIM = "CORE_CHAINCODE_LOGGING_SHIM";
         public static readonly string CORE_CHAINCODE_LOGGING_LEVEL = "CORE_CHAINCODE_LOGGING_LEVEL";
 
@@ -79,7 +86,6 @@ namespace Hyperledger.Fabric.Shim
             }
         }
 
-
         private void ProcessCommandLineOptions(string[] args)
         {
             try
@@ -106,25 +112,114 @@ namespace Hyperledger.Fabric.Shim
             }
             catch (Exception e)
             {
-                logger.Warn("cli parsing failed with exception", e);
+                logger.Warning(e,"cli parsing failed with exception");
             }
 
-            logger.Info("<<<<<<<<<<<<<CommandLine options>>>>>>>>>>>>");
-            logger.Info("CORE_CHAINCODE_ID_NAME: " + Id);
-            logger.Info("CORE_PEER_ADDRESS: " + Host + ":" + Port);
-            logger.Info("CORE_PEER_TLS_ENABLED: " + IsTlsEnabled);
-            logger.Info("CORE_PEER_TLS_ROOTCERT_FILE" + (TlsClientRootCertPath ?? ""));
-            logger.Info("CORE_TLS_CLIENT_KEY_PATH" + (TlsClientKeyPath ?? ""));
-            logger.Info("CORE_TLS_CLIENT_CERT_PATH" + (TlsClientCertPath ?? ""));
+            logger.Information("<<<<<<<<<<<<<CommandLine options>>>>>>>>>>>>");
+            logger.Information("CORE_CHAINCODE_ID_NAME: " + Id);
+            logger.Information("CORE_PEER_ADDRESS: " + Host + ":" + Port);
+            logger.Information("CORE_PEER_TLS_ENABLED: " + IsTlsEnabled);
+            logger.Information("CORE_PEER_TLS_ROOTCERT_FILE" + (TlsClientRootCertPath ?? ""));
+            logger.Information("CORE_TLS_CLIENT_KEY_PATH" + (TlsClientKeyPath ?? ""));
+            logger.Information("CORE_TLS_CLIENT_CERT_PATH" + (TlsClientCertPath ?? ""));
         }
 
         private void InitializeLogging()
         {
-            //TODO mpiva
-            //Since we use liblog, which is a log abstraction library. after the real logging library is
-            //decided, this can be coded.
-            //Swapping liblog, for NET Core logging?...
+#if DEBUG
+            LogEventLevel chaincodeLevel = LogEventLevel.Debug;
+            LogEventLevel shinLevel = LogEventLevel.Debug;
+#else
+            LogEventLevel chaincodeLevel = LogEventLevel.Information;
+            LogEventLevel shinLevel = LogEventLevel.Information;
+#endif
+            string env = Environment.GetEnvironmentVariable(CORE_CHAINCODE_LOGGING_LEVEL);
+            if (!string.IsNullOrEmpty(env))
+                chaincodeLevel = MapLevel(env);
+            env = Environment.GetEnvironmentVariable(CORE_CHAINCODE_LOGGING_SHIM);
+            if (!string.IsNullOrEmpty(env))
+                shinLevel = MapLevel(env);
+            Log.Logger = new LoggerConfiguration().Enrich.With(new LevelEnricher()).WriteTo.Console(outputTemplate: "{Timestamp:HH:mm:ss:fff} {ColorLevel} {SourceContext} {Message}{NewLine}{Exception}").MinimumLevel.Override("Hyperledger.Fabric.Shim", shinLevel).MinimumLevel.Is(chaincodeLevel).CreateLogger();
+            SetWindowsConsoleToANSI();
+        }
+        private const int STD_OUTPUT_HANDLE = -11;
+        private const uint ENABLE_VIRTUAL_TERMINAL_PROCESSING = 0x0004;
+        private const uint DISABLE_NEWLINE_AUTO_RETURN = 0x0008;
 
+        [DllImport("kernel32.dll")]
+        private static extern bool GetConsoleMode(IntPtr hConsoleHandle, out uint lpMode);
+
+        [DllImport("kernel32.dll")]
+        private static extern bool SetConsoleMode(IntPtr hConsoleHandle, uint dwMode);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern IntPtr GetStdHandle(int nStdHandle);
+
+        private void SetWindowsConsoleToANSI()
+        {
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            { 
+                var iStdOut = GetStdHandle(STD_OUTPUT_HANDLE);
+                if (GetConsoleMode(iStdOut, out uint outConsoleMode))
+                {
+                    outConsoleMode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING | DISABLE_NEWLINE_AUTO_RETURN;
+                    SetConsoleMode(iStdOut, outConsoleMode);
+                }
+            }
+        }
+        private LogEventLevel MapLevel(string level)
+        {
+            if (level != null)
+            {
+                switch (level)
+                {
+                    case "CRITICAL":
+                    case "ERROR":
+                        return LogEventLevel.Error;
+                    case "WARNING":
+                        return LogEventLevel.Warning;
+                    case "INFO":
+                        return LogEventLevel.Information;
+                    case "NOTICE":
+                        return LogEventLevel.Verbose;
+                    case "DEBUG":
+                        return LogEventLevel.Debug;
+                    case "FINEST":
+                        return LogEventLevel.Debug;
+                    case "FINE":
+                        return LogEventLevel.Debug;
+                    case "FINER":
+                        return LogEventLevel.Debug;
+                }
+            }
+            return LogEventLevel.Information;
+        }
+        public class LevelEnricher : ILogEventEnricher
+        {
+            public void Enrich(LogEvent logEvent, ILogEventPropertyFactory propertyFactory)
+            {
+                string level = "INFO   ";
+                switch (logEvent.Level)
+                {
+                    case LogEventLevel.Warning:
+                        level = "\u001B[1;33mWARNING\u001B[0m";
+                        break;
+                    case LogEventLevel.Debug:
+                        level = "\u001B[36mFINEST \u001B[0m";
+                        break;
+                    case LogEventLevel.Error:
+                        level = "\u001B[1;31mSEVERE \u001B[0m";
+                        break;
+                    case LogEventLevel.Fatal:
+                        level = "\u001B[1;31mSEVERE \u001B[0m";
+                        break;
+                    case LogEventLevel.Verbose:
+                        level = "\u001B[35mCONFIG \u001B[0m";
+                        break;
+                }
+
+                logEvent.AddPropertyIfAbsent(propertyFactory.CreateProperty("ColorLevel", level));
+            }
         }
 
         private void ValidateOptions()
@@ -174,13 +269,13 @@ namespace Hyperledger.Fabric.Shim
                 }
             }
 
-            logger.Info("<<<<<<<<<<<<<Enviromental options>>>>>>>>>>>>");
-            logger.Info("CORE_CHAINCODE_ID_NAME: " + Id);
-            logger.Info("CORE_PEER_ADDRESS: " + Host);
-            logger.Info("CORE_PEER_TLS_ENABLED: " + IsTlsEnabled);
-            logger.Info("CORE_PEER_TLS_ROOTCERT_FILE" + (TlsClientRootCertPath ?? ""));
-            logger.Info("CORE_TLS_CLIENT_KEY_PATH" + (TlsClientKeyPath ?? ""));
-            logger.Info("CORE_TLS_CLIENT_CERT_PATH" + (TlsClientCertPath ?? ""));
+            logger.Information("<<<<<<<<<<<<<Enviromental options>>>>>>>>>>>>");
+            logger.Information("CORE_CHAINCODE_ID_NAME: " + Id);
+            logger.Information("CORE_PEER_ADDRESS: " + Host);
+            logger.Information("CORE_PEER_TLS_ENABLED: " + IsTlsEnabled);
+            logger.Information("CORE_PEER_TLS_ROOTCERT_FILE" + (TlsClientRootCertPath ?? ""));
+            logger.Information("CORE_TLS_CLIENT_KEY_PATH" + (TlsClientKeyPath ?? ""));
+            logger.Information("CORE_TLS_CLIENT_CERT_PATH" + (TlsClientCertPath ?? ""));
         }
 
         public Task StartAsync(string[] args, CancellationToken token = default(CancellationToken))
@@ -204,8 +299,7 @@ namespace Hyperledger.Fabric.Shim
                     wr.WriteLine("Usage chaincode [OPTIONS]");
                     wr.WriteLine("Options:");
                     options.WriteOptionDescriptions(wr);
-                    logger.Info(wr.ToString());
-                    Console.Write(wr.ToString());
+                    logger.Information(wr.ToString());
                     return;
                 }
 
@@ -213,19 +307,18 @@ namespace Hyperledger.Fabric.Shim
                 {
                     string error = $"The chaincode id must be specified using either the -i or --i command line options or the {CORE_CHAINCODE_ID_NAME} environment variable.";
                     logger.Error(error);
-                    Console.WriteLine(error);
+                    return;
                 }
-                logger.Trace("chaincode started");
+                logger.Debug("chaincode started");
                 Channel connection = NewPeerClientConnection();
-                logger.Trace("connection created");
+                logger.Debug("connection created");
                 ChaincodeSupportStream stream = new ChaincodeSupportStream();
                 await stream.ProcessAndBlockAsync(connection, this, Id, exitSource.Token).ConfigureAwait(false);
-                logger.Trace("Finished");
+                logger.Debug("Finished");
             }
             catch (Exception e)
             {
-                logger.Error(e.Message, e);
-                Console.WriteLine("Error: "+e.Message);
+                logger.Error(e,"Chaincode could not start");
             }
             finally
             {
@@ -235,13 +328,13 @@ namespace Hyperledger.Fabric.Shim
 
         public void ProcessExit(object ob, EventArgs args)
         {
-            logger.Info("ProcessExit!");
+            logger.Information("ProcessExit!");
             exitSource.Cancel();
         }
 
         public Channel NewPeerClientConnection()
         {
-            logger.Info("Configuring channel connection to peer.");
+            logger.Information("Configuring channel connection to peer.");
             ChannelCredentials cred = ChannelCredentials.Insecure;
             if (IsTlsEnabled)
             {
@@ -281,7 +374,7 @@ namespace Hyperledger.Fabric.Shim
                     clientkey = File.ReadAllText(TlsClientKeyPath);
                 }
 
-                logger.Info("TLS is enabled");
+                logger.Information("TLS is enabled");
                 cred = clientcert != null ? new SslCredentials(rootcert, new KeyCertificatePair(clientcert, clientkey)) : new SslCredentials(rootcert);
             }
 

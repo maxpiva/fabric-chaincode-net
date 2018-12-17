@@ -1,38 +1,19 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
-
   <PropertyGroup>
     <TargetFramework>netstandard2.0</TargetFramework>
     <AssemblyName>Hyperledger.Fabric.Shim</AssemblyName>
     <RootNamespace>Hyperledger.Fabric.Shim</RootNamespace>
   </PropertyGroup>
-
-
   <ItemGroup>
     <PackageReference Include="Google.Protobuf" Version="3.6.1" />
-    <PackageReference Include="Grpc.Tools" Version="1.17.0">
-      <PrivateAssets>all</PrivateAssets>
-      <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
-    </PackageReference>
-    <PackageReference Include="Grpc.Tools.MsBuild.Unofficial" Version="1.0.51" />
-    <PackageReference Include="LibLog" Version="5.0.3">
-      <PrivateAssets>all</PrivateAssets>
-      <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
-    </PackageReference>
+    <PackageReference Include="Grpc.Tools" Version="1.17.1" PrivateAssets="All" />
     <PackageReference Include="Microsoft.CSharp" Version="4.6.0-preview.18571.3" />
     <PackageReference Include="Mono.Options" Version="5.3.0.1" />
     <PackageReference Include="Newtonsoft.Json" Version="12.0.1" />
     <PackageReference Include="Nito.AsyncEx" Version="5.0.0-pre-05" />
+    <PackageReference Include="Grpc" Version="1.17.1" />
+    <PackageReference Include="Serilog.Sinks.Console" Version="3.1.1" />
   </ItemGroup>
-  <ItemGroup Condition=" '$(TargetFramework)' == 'net47'">
-    <PackageReference Include="Grpc" Version="1.17.0" />
-  </ItemGroup>
-  <ItemGroup Condition=" '$(TargetFramework)' == 'netstandard2.0'">
-    <PackageReference Include="Grpc.Core" Version="1.17.0" />
-  </ItemGroup>
-  <PropertyGroup>
-    <GrpcToolsVersion>1.17.0</GrpcToolsVersion>
-    <GrpcIncludeFolders>$(SolutionDir)ProtoBuf;$(SolutionDir)FabricChaincode\Proto</GrpcIncludeFolders>
-  </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
     <DefineConstants>LIBLOG_PUBLIC</DefineConstants>
   </PropertyGroup>
@@ -40,7 +21,8 @@
     <DefineConstants>LIBLOG_PUBLIC</DefineConstants>
   </PropertyGroup>
   <ItemGroup>
-    <ProtoIncludeFolder Include="$(SolutionDir)ProtoBuf" />
-    <ProtoIncludeFolder Include="$(SolutionDir)FabricChaincode\Proto" />
+    <ProtoBuf Include="$(SolutionDir)FabricChaincode\Proto\**\*.*">
+      <ProtoRoot>$(SolutionDir)FabricChaincode\Proto\</ProtoRoot>
+    </ProtoBuf>
   </ItemGroup>
 </Project>

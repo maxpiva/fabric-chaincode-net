@@ -4,13 +4,14 @@ using System.Threading.Tasks;
 using Grpc.Core;
 using Hyperledger.Fabric.Protos.Peer;
 using Hyperledger.Fabric.Shim.Helper;
-using Hyperledger.Fabric.Shim.Logging;
+using Serilog;
+
 
 namespace Hyperledger.Fabric.Shim.Tests.Mock.Peer
 {
     public class ChaincodeMockPeerService : ChaincodeSupport.ChaincodeSupportBase
     {
-        private static readonly ILog logger = LogProvider.GetLogger(typeof(ChaincodeMockPeerService));
+        private static readonly ILogger logger = Log.ForContext<ChaincodeMockPeerService>();
         private int lastExecutedStepNumber;
         private ChaincodeMessage lastMessageRcvd;
         private ChaincodeMessage lastMessageSend;
@@ -46,7 +47,7 @@ namespace Hyperledger.Fabric.Shim.Tests.Mock.Peer
                 while (await requestStream.MoveNext().ConfigureAwait(false))
                 {
                     ChaincodeMessage chaincodeMessage = requestStream.Current;
-                    logger.Info("Mock peer => Got message: " + chaincodeMessage);
+                    logger.Information("Mock peer => Got message: " + chaincodeMessage);
                     lastMessageRcvd = chaincodeMessage;
                     if (scenario.Count > 0)
                     {
@@ -58,13 +59,13 @@ namespace Hyperledger.Fabric.Shim.Tests.Mock.Peer
                             foreach (ChaincodeMessage m in nextSteps)
                             {
                                 lastMessageSend = m;
-                                logger.Info("Mock peer => Sending response message: " + m);
+                                logger.Information("Mock peer => Sending response message: " + m);
                                 await responseStream.WriteAsync(m).ConfigureAwait(false);
                             }
                         }
                         else
                         {
-                            logger.Warn($"Non expected message rcvd in step {step.GetType().Name}");
+                            logger.Warning($"Non expected message rcvd in step {step.GetType().Name}");
                         }
 
                     lastExecutedStepNumber++;

@@ -8,7 +8,8 @@ using Google.Protobuf;
 using Hyperledger.Fabric.Protos.Peer;
 using Hyperledger.Fabric.Shim.Helper;
 using Hyperledger.Fabric.Shim.Ledger;
-using Hyperledger.Fabric.Shim.Logging;
+using Serilog;
+
 
 #pragma warning disable 693
 
@@ -92,7 +93,7 @@ namespace Hyperledger.Fabric.Shim.Implementation
             private readonly AsyncEnumerator<T> en;
             private readonly List<T> Obtained = new List<T>();
             private QueryResponseMetadata metadata;
-            private static readonly ILog logger = LogProvider.GetLogger(typeof(Cache<T>));
+            private static readonly ILogger logger = Log.ForContext<Cache<T>>();
             public Cache(AsyncEnumerator<T> en)
             {
                 this.en = en;
@@ -112,7 +113,7 @@ namespace Hyperledger.Fabric.Shim.Implementation
                         }
                         catch (InvalidProtocolBufferException)
                         {
-                            logger.Warn("can't parse response metadata");
+                            logger.Warning("can't parse response metadata");
                             throw;
                         }
                     }

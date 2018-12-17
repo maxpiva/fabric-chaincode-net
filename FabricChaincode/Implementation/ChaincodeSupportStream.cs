@@ -4,7 +4,8 @@ using System.Threading.Tasks;
 using Grpc.Core;
 using Hyperledger.Fabric.Protos.Peer;
 using Hyperledger.Fabric.Shim.Helper;
-using Hyperledger.Fabric.Shim.Logging;
+using Serilog;
+
 
 #pragma warning disable 4014
 
@@ -12,13 +13,13 @@ namespace Hyperledger.Fabric.Shim.Implementation
 {
     public class ChaincodeSupportStream
     {
-        private static readonly ILog logger = LogProvider.GetLogger(typeof(ChaincodeSupportStream));
+        private static readonly ILogger logger = Log.ForContext<ChaincodeSupportStream>();
         private Handler handler;
 
         public async Task ProcessAndBlockAsync(Channel connection, IChaincodeAsync chaincode, string id, CancellationToken token = default(CancellationToken))
         {
             ChaincodeSupport.ChaincodeSupportClient stub = new ChaincodeSupport.ChaincodeSupportClient(connection);
-            logger.Info("Connecting to peer.");
+            logger.Information("Connecting to peer.");
             AsyncDuplexStreamingCall<ChaincodeMessage, ChaincodeMessage> requestObserver = stub.Register();
             CancellationTokenSource src = CancellationTokenSource.CreateLinkedTokenSource(token);
             Task.Run(async () =>
@@ -51,6 +52,8 @@ namespace Hyperledger.Fabric.Shim.Implementation
                     logger.Error($"Server Error: {e.Message}");
                     src.Cancel();
                 }
+
+                logger.Information("Chaincode stream is shutting down.");
             }, src.Token);
 
 
@@ -94,7 +97,7 @@ namespace Hyperledger.Fabric.Shim.Implementation
                 }
                 catch (Exception e)
                 {
-                    logger.ErrorException(e.Message, e);
+                    logger.Error(e,e.Message);
                     break;
                 }
             }

@@ -9,8 +9,8 @@ using System.Collections.Generic;
 using System.Threading;
 using Grpc.Core;
 using Hyperledger.Fabric.Protos.Peer;
-using Hyperledger.Fabric.Shim.Helper;
-using Hyperledger.Fabric.Shim.Logging;
+using Serilog;
+
 
 namespace Hyperledger.Fabric.Shim.Tests.Mock.Peer
 {
@@ -19,7 +19,7 @@ namespace Hyperledger.Fabric.Shim.Tests.Mock.Peer
      */
     public class ChaincodeMockPeer
     {
-        private static readonly ILog logger = LogProvider.GetLogger(typeof(ChaincodeMockPeer));
+        private static readonly ILogger logger = Log.ForContext<ChaincodeMockPeer>();
 
 
 
@@ -92,7 +92,7 @@ namespace Hyperledger.Fabric.Shim.Tests.Mock.Peer
          */
         public void Send(ChaincodeMessage msg)
         {
-            logger.Info("Mock peer => Sending message: " + msg);
+            logger.Information("Mock peer => Sending message: " + msg);
             service.Send(msg);
         }
 
